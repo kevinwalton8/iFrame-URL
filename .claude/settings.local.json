@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --yes)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --yes --name url-gallery)",
+      "Bash(mkdir -p \"/tmp/url-gallery-scaffold\")",
+      "Read(//tmp/**)",
+      "Bash(npm install *)",
+      "Bash(npm list *)",
+      "Bash(npx tsc *)",
+      "Bash(node \"/Users/kevin_walton/Documents/Personal Branding/Whop Apps/URL Gallery/node_modules/typescript/lib/_tsc.js\" --version)",
+      "Bash(node node_modules/typescript/lib/_tsc.js --noEmit)",
+      "Bash(npm run *)",
+      "Bash(node -e \"require\\('/Users/kevin_walton/Documents/Personal Branding/Whop Apps/URL Gallery/node_modules/next/dist/bin/next'\\)\")",
+      "Bash(node node_modules/next/dist/bin/next build)",
+      "Bash(node node_modules/next/dist/bin/next dev -p 3001)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(curl -s http://localhost:3001)",
+      "Bash(curl -s -H 'Authorization: Bearer apik_ChQJrhHPvg76G_C2514840_C_46ed34541017341886b6abc5e8a156a741373927828cf17491dd2edb2ebb8a' https://api.whop.com/api/v5/company)",
+      "Bash(brew install *)",
+      "Bash(gh auth *)",
+      "Bash(curl -s https://url-gallery.vercel.app/)",
+      "Bash(curl -sI https://url-gallery.vercel.app/)"
+    ]
+  }
+}

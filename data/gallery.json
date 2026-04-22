@@ -1,0 +1,15 @@
+{
+  "sites": [
+    {
+      "id": "cc1a887a-49fb-4b42-bf16-b0502e6fd80f",
+      "title": "Awwwards - Website Awards - Best Web Design Trends",
+      "url": "https://www.awwwards.com/",
+      "description": "Awwwards are the Website Awards that recognize and promote the talent and effort of the best developers, designers and web agencies in the world.",
+      "imageUrl": "https://assets.awwwards.com/assets/images/pages/about-certificates/awwwards.jpg",
+      "category": "Uncategorized",
+      "tags": [],
+      "createdAt": "2026-04-22T15:36:40.799Z"
+    }
+  ],
+  "categories": []
+}
