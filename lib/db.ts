@@ -19,7 +19,12 @@ export type Category = {
   createdAt: string;
 };
 
-const DATA_FILE = path.join(process.cwd(), "data", "gallery.json");
+// Seed file baked into the deployment — always readable
+const SEED_FILE = path.join(process.cwd(), "data", "gallery.json");
+// /tmp is writable on Vercel serverless; falls back to project dir in dev
+const WRITE_FILE = process.env.VERCEL
+  ? "/tmp/gallery.json"
+  : SEED_FILE;
 
 type LocalData = {
   sites: Site[];
@@ -27,18 +32,22 @@ type LocalData = {
 };
 
 function readLocal(): LocalData {
-  try {
-    const raw = fs.readFileSync(DATA_FILE, "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return { sites: [], categories: [] };
+  // Try the writable copy first (has any in-session edits), then fall back to seed
+  for (const file of [WRITE_FILE, SEED_FILE]) {
+    try {
+      const raw = fs.readFileSync(file, "utf-8");
+      return JSON.parse(raw);
+    } catch {
+      // continue
+    }
   }
+  return { sites: [], categories: [] };
 }
 
 function writeLocal(data: LocalData) {
-  const dir = path.dirname(DATA_FILE);
+  const dir = path.dirname(WRITE_FILE);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  fs.writeFileSync(WRITE_FILE, JSON.stringify(data, null, 2));
 }
 
 const useKV = !!(

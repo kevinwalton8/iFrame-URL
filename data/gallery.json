@@ -9,7 +9,73 @@
       "category": "Uncategorized",
       "tags": [],
       "createdAt": "2026-04-22T15:36:40.799Z"
+    },
+    {
+      "id": "c0f95391-4fd7-4466-84c9-c67721a65089",
+      "title": "Killerportfolio",
+      "url": "https://www.killerportfolio.com/",
+      "description": "A curated selection of beautifully designed portfolio websites",
+      "imageUrl": "https://killerportfolio.com/images/social.jpg",
+      "category": "Site Collections",
+      "tags": [],
+      "createdAt": "2026-04-23T13:50:39.485Z"
+    },
+    {
+      "id": "ea2ea595-8c64-401b-bb9d-82dc384f312d",
+      "title": "SiteofSites",
+      "url": "https://www.siteofsites.co/",
+      "description": "The best web design inspiration 2026",
+      "imageUrl": "https://static.wixstatic.com/media/b58e39_a4a9f04a13324bd2ab2c17ef600e5546~mv2.png/v1/fit/w_2500,h_1330,al_c/b58e39_a4a9f04a13324bd2ab2c17ef600e5546~mv2.png",
+      "category": "Site Collections",
+      "tags": [],
+      "createdAt": "2026-04-23T13:50:39.488Z"
+    },
+    {
+      "id": "62c1dedb-8f13-4410-abfc-fc114867a974",
+      "title": "SiteInspire",
+      "url": "https://www.siteinspire.com/",
+      "description": "A showcase of the finest web and interactive design",
+      "imageUrl": "",
+      "category": "Site Collections",
+      "tags": [],
+      "createdAt": "2026-04-23T13:50:39.491Z"
+    },
+    {
+      "id": "ec9aec9e-de5f-40b5-a9a8-b85651ff6e9d",
+      "title": "OGfolio",
+      "url": "https://ogfolio.com/",
+      "description": "A curated library of Open Graph images",
+      "imageUrl": "https://framerusercontent.com/images/2IO3VHGBoDfX608IyNCXNpSA.png",
+      "category": "Site Collections",
+      "tags": [],
+      "createdAt": "2026-04-23T13:50:39.494Z"
+    },
+    {
+      "id": "d49de39a-58ab-4d7d-8d38-d61ff455b601",
+      "title": "Inspo.page",
+      "url": "https://www.inspo.page/",
+      "description": "Curated website inspiration at the component level",
+      "imageUrl": "https://inspo.page/og.png?v=2",
+      "category": "Site Collections",
+      "tags": [],
+      "createdAt": "2026-04-23T13:50:39.497Z"
+    },
+    {
+      "id": "e31673e1-e29b-4e50-8430-44412e17a4f7",
+      "title": "Webzibition",
+      "url": "https://tympanus.net/codrops/webzibition/",
+      "description": "Freshly hand-picked websites for your inspiration",
+      "imageUrl": "https://codrops-1f606.kxcdn.com/codrops/wp-content/uploads/2024/09/Webzibition.jpg?x30804",
+      "category": "Site Collections",
+      "tags": [],
+      "createdAt": "2026-04-23T13:50:39.500Z"
     }
   ],
-  "categories": []
+  "categories": [
+    {
+      "id": "bbf2e487-9392-47f2-966f-7bb2c3f0d5a9",
+      "name": "Site Collections",
+      "createdAt": "2026-04-23T13:50:13.331Z"
+    }
+  ]
 }
