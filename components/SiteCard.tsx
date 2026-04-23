@@ -7,9 +7,10 @@ type Props = {
   site: Site;
   editMode: boolean;
   onDelete: (id: string) => void;
+  onEdit: (site: Site) => void;
 };
 
-export default function SiteCard({ site, editMode, onDelete }: Props) {
+export default function SiteCard({ site, editMode, onDelete, onEdit }: Props) {
   const [imgError, setImgError] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -24,6 +25,11 @@ export default function SiteCard({ site, editMode, onDelete }: Props) {
     if (!confirm(`Remove "${site.title}"?`)) return;
     setDeleting(true);
     await onDelete(site.id);
+  }
+
+  function handleEdit(e: React.MouseEvent) {
+    e.stopPropagation();
+    onEdit(site);
   }
 
   return (
@@ -65,13 +71,22 @@ export default function SiteCard({ site, editMode, onDelete }: Props) {
         <span className="text-sm font-medium text-white truncate">{site.title}</span>
 
         {editMode && (
-          <button
-            onClick={handleDelete}
-            className="flex-shrink-0 w-6 h-6 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center"
-            aria-label="Delete site"
-          >
-            <TrashIcon />
-          </button>
+          <div className="flex gap-1.5 flex-shrink-0">
+            <button
+              onClick={handleEdit}
+              className="w-6 h-6 rounded-full bg-white/10 text-white/60 hover:bg-white/25 hover:text-white transition-colors flex items-center justify-center"
+              aria-label="Edit site"
+            >
+              <PencilIcon />
+            </button>
+            <button
+              onClick={handleDelete}
+              className="w-6 h-6 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center"
+              aria-label="Delete site"
+            >
+              <TrashIcon />
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -93,6 +108,15 @@ function ExternalLinkIcon() {
       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
       <polyline points="15 3 21 3 21 9" />
       <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
     </svg>
   );
 }

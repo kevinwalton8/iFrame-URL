@@ -20,6 +20,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [showManageCategories, setShowManageCategories] = useState(false);
 
   const filteredSites = useMemo(() => {
@@ -54,6 +55,18 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
     const newSite: Site = await res.json();
     setSites((prev) => [...prev, newSite]);
     setShowAddModal(false);
+  }
+
+  async function handleUpdateSite(id: string, data: Omit<Site, "id" | "createdAt">) {
+    const res = await fetch("/api/sites", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...data }),
+    });
+    if (!res.ok) return;
+    const updated: Site = await res.json();
+    setSites((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    setEditingSite(null);
   }
 
   async function handleDeleteSite(id: string) {
@@ -225,6 +238,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
                     site={site}
                     editMode={editMode && isAdmin}
                     onDelete={handleDeleteSite}
+                    onEdit={setEditingSite}
                   />
                 ))}
               </div>
@@ -264,6 +278,16 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
           categories={categories}
           onAdd={handleAddSite}
           onClose={() => setShowAddModal(false)}
+          onCreateCategory={handleAddCategory}
+        />
+      )}
+
+      {editingSite && (
+        <AddSiteModal
+          categories={categories}
+          initialSite={editingSite}
+          onUpdate={handleUpdateSite}
+          onClose={() => setEditingSite(null)}
           onCreateCategory={handleAddCategory}
         />
       )}

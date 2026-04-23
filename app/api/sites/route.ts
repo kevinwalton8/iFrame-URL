@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSites, saveSites, type Site } from "@/lib/db";
+import { getSites, saveSites, updateSite, type Site } from "@/lib/db";
 import { hasAccess, authorizedUserOn } from "@whop-apps/sdk";
 import { headers } from "next/headers";
 
@@ -43,6 +43,18 @@ export async function POST(req: NextRequest) {
   sites.push(newSite);
   await saveSites(sites);
   return NextResponse.json(newSite, { status: 201 });
+}
+
+export async function PUT(req: NextRequest) {
+  const isAdmin = await checkAdmin(req);
+  if (!isAdmin) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
+  const { id, ...patch } = await req.json();
+  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  const updated = await updateSite(id, patch);
+  if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json(updated);
 }
 
 export async function DELETE(req: NextRequest) {

@@ -1,27 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { Site, Category } from "@/lib/db";
 
 type Props = {
   categories: Category[];
-  onAdd: (data: Omit<Site, "id" | "createdAt">) => Promise<void>;
+  initialSite?: Site;
+  onAdd?: (data: Omit<Site, "id" | "createdAt">) => Promise<void>;
+  onUpdate?: (id: string, data: Omit<Site, "id" | "createdAt">) => Promise<void>;
   onClose: () => void;
   onCreateCategory: (name: string) => Promise<void>;
 };
 
-export default function AddSiteModal({ categories, onAdd, onClose, onCreateCategory }: Props) {
-  const [title, setTitle] = useState("");
-  const [url, setUrl] = useState("");
-  const [description, setDescription] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [category, setCategory] = useState(categories[0]?.name ?? "Uncategorized");
-  const [tags, setTags] = useState("");
+export default function AddSiteModal({
+  categories,
+  initialSite,
+  onAdd,
+  onUpdate,
+  onClose,
+  onCreateCategory,
+}: Props) {
+  const isEditing = !!initialSite;
+
+  const [title, setTitle] = useState(initialSite?.title ?? "");
+  const [url, setUrl] = useState(initialSite?.url ?? "");
+  const [description, setDescription] = useState(initialSite?.description ?? "");
+  const [imageUrl, setImageUrl] = useState(initialSite?.imageUrl ?? "");
+  const [category, setCategory] = useState(
+    initialSite?.category ?? categories[0]?.name ?? "Uncategorized"
+  );
+  const [tags, setTags] = useState(initialSite?.tags?.join(", ") ?? "");
+
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
   const [newCatMode, setNewCatMode] = useState(false);
   const [newCatName, setNewCatName] = useState("");
+
+  const [imageMode, setImageMode] = useState<"url" | "upload">("url");
+  const [uploadPreview, setUploadPreview] = useState<string>(initialSite?.imageUrl ?? "");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFetch() {
     if (!url.trim()) return;
@@ -30,7 +49,10 @@ export default function AddSiteModal({ categories, onAdd, onClose, onCreateCateg
     try {
       const res = await fetch(`/api/og-fetch?url=${encodeURIComponent(url)}`);
       const data = await res.json();
-      if (data.imageUrl) setImageUrl(data.imageUrl);
+      if (data.imageUrl) {
+        setImageUrl(data.imageUrl);
+        setUploadPreview(data.imageUrl);
+      }
       if (data.title && !title) setTitle(data.title);
       if (data.description && !description) setDescription(data.description);
     } catch {
@@ -38,6 +60,18 @@ export default function AddSiteModal({ categories, onAdd, onClose, onCreateCateg
     } finally {
       setFetching(false);
     }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      setImageUrl(result);
+      setUploadPreview(result);
+    };
+    reader.readAsDataURL(file);
   }
 
   async function handleCreateCategory() {
@@ -52,23 +86,32 @@ export default function AddSiteModal({ categories, onAdd, onClose, onCreateCateg
     e.preventDefault();
     if (!title.trim() || !url.trim()) return;
     setSubmitting(true);
-    await onAdd({
+
+    const payload = {
       title: title.trim(),
       url: url.trim(),
       description: description.trim(),
       imageUrl: imageUrl.trim(),
       category: category || "Uncategorized",
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
-    });
+    };
+
+    if (isEditing && onUpdate) {
+      await onUpdate(initialSite!.id, payload);
+    } else if (onAdd) {
+      await onAdd(payload);
+    }
     setSubmitting(false);
   }
 
+  const previewSrc = imageMode === "upload" ? uploadPreview : imageUrl;
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl">
+      <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h2 className="text-lg font-semibold">Add New Site</h2>
+          <h2 className="text-lg font-semibold">{isEditing ? "Edit Site" : "Add New Site"}</h2>
           <button
             onClick={onClose}
             className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition-colors"
@@ -123,14 +166,74 @@ export default function AddSiteModal({ categories, onAdd, onClose, onCreateCateg
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30"
           />
 
-          {/* Image URL */}
-          <input
-            type="text"
-            placeholder="Image URL (or use Fetch)"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30"
-          />
+          {/* Image section */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                Thumbnail
+              </label>
+              <div className="flex rounded-lg overflow-hidden border border-white/10 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setImageMode("url")}
+                  className={`px-3 py-1 transition-colors ${
+                    imageMode === "url" ? "bg-white/20 text-white" : "text-white/40 hover:text-white"
+                  }`}
+                >
+                  URL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageMode("upload")}
+                  className={`px-3 py-1 transition-colors ${
+                    imageMode === "upload" ? "bg-white/20 text-white" : "text-white/40 hover:text-white"
+                  }`}
+                >
+                  Upload
+                </button>
+              </div>
+            </div>
+
+            {imageMode === "url" ? (
+              <input
+                type="text"
+                placeholder="Image URL (or use Fetch)"
+                value={imageUrl}
+                onChange={(e) => { setImageUrl(e.target.value); setUploadPreview(e.target.value); }}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30"
+              />
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full h-24 bg-white/5 border border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:border-white/40 hover:bg-white/8 transition-colors"
+              >
+                <UploadIcon />
+                <span className="text-xs text-white/40">Click to choose a file</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </div>
+            )}
+
+            {/* Preview */}
+            {previewSrc && (
+              <div className="mt-2 relative rounded-xl overflow-hidden h-28 bg-white/5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={previewSrc} alt="Preview" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => { setImageUrl(""); setUploadPreview(""); }}
+                  className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+                >
+                  <XIcon />
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Category */}
           <div>
@@ -211,7 +314,7 @@ export default function AddSiteModal({ categories, onAdd, onClose, onCreateCateg
               disabled={submitting || !title.trim() || !url.trim()}
               className="flex-1 py-3 bg-white text-black rounded-xl text-sm font-semibold hover:bg-white/90 disabled:opacity-40 transition-colors"
             >
-              {submitting ? "Adding..." : "Add Site"}
+              {submitting ? "Saving..." : isEditing ? "Save Changes" : "Add Site"}
             </button>
             <button
               type="button"
@@ -241,6 +344,16 @@ function ImageIcon() {
       <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
       <circle cx="8.5" cy="8.5" r="1.5" />
       <polyline points="21 15 16 10 5 21" />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-white/30">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   );
 }

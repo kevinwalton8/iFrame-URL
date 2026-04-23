@@ -52,6 +52,15 @@ export async function getSites(): Promise<Site[]> {
   return readLocal().sites;
 }
 
+export async function updateSite(id: string, patch: Partial<Omit<Site, "id" | "createdAt">>): Promise<Site | null> {
+  const sites = await getSites();
+  const idx = sites.findIndex((s) => s.id === id);
+  if (idx === -1) return null;
+  sites[idx] = { ...sites[idx], ...patch };
+  await saveSites(sites);
+  return sites[idx];
+}
+
 export async function saveSites(sites: Site[]): Promise<void> {
   if (useKV) {
     await kv.set("sites", sites);
