@@ -262,6 +262,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
                         site={site}
                         editMode={editMode && isAdmin}
                         onDelete={handleDeleteSite}
+                        onEdit={setEditingSite}
                       />
                     ))}
                   </div>
