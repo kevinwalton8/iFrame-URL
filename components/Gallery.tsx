@@ -123,15 +123,11 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-5 pb-3">
-        <div className="flex items-center gap-3">
-          {/* App icon placeholder */}
+        <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-md bg-white/10 flex items-center justify-center text-xs">
             🔗
           </div>
-          <div>
-            <h1 className="text-base font-semibold leading-tight">Website Inspiration</h1>
-            <p className="text-xs text-white/50">{sites.length} sites</p>
-          </div>
+          <span className="text-sm font-medium text-white/70">{sites.length} {sites.length === 1 ? "site" : "sites"}</span>
         </div>
 
         <div className="flex items-center gap-2">
