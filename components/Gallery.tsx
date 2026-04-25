@@ -10,15 +10,16 @@ import GridPicker from "./GridPicker";
 import BulkActionBar from "./BulkActionBar";
 
 type Props = {
-  initialSites: Site[];
-  initialCategories: Category[];
   isAdmin: boolean;
   companyId: string;
 };
 
-export default function Gallery({ initialSites, initialCategories, isAdmin, companyId }: Props) {
-  const [sites, setSites] = useState<Site[]>(initialSites);
-  const [categories, setCategories] = useState<Category[]>(initialCategories);
+export default function Gallery({ isAdmin, companyId }: Props) {
+  // Always start empty — the client fetches with the correct experienceId.
+  // This prevents a flash of server-rendered data from the wrong instance key.
+  const [sites, setSites] = useState<Site[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [viewMode, setViewMode] = useState<"all" | "category">("all");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -44,35 +45,40 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     instanceResolved.current = true;
 
     async function resolveInstance() {
-      // If not inside a Whop iframe (e.g. local dev), skip SDK call entirely
-      if (typeof window === "undefined" || window.parent === window) return;
+      let expId = companyId; // fallback
 
+      // Try to get the per-instance experienceId from the Whop iframe SDK
+      if (typeof window !== "undefined" && window.parent !== window) {
+        try {
+          const { createAppIframeSDK } = await import("@whop-apps/sdk");
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const sdk = createAppIframeSDK({ onMessage: {} as any });
+          const urlData = await sdk.getTopLevelUrlData({});
+          if (urlData?.experienceId) expId = urlData.experienceId;
+        } catch {
+          // SDK unavailable — stay on companyId
+        }
+      }
+
+      setInstanceId(expId);
+
+      // Always fetch client-side so we never show the wrong instance's data
       try {
-        const { createAppIframeSDK } = await import("@whop-apps/sdk");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sdk = createAppIframeSDK({ onMessage: {} as any });
-        const urlData = await sdk.getTopLevelUrlData({});
-        const expId: string = urlData?.experienceId ?? "";
-
-        if (!expId || expId === instanceId) return; // already correct
-
-        // We have a real per-instance experience ID — refetch with it
-        setInstanceId(expId);
-
         const [sitesRes, catsRes] = await Promise.all([
           fetch("/api/sites", { headers: { "x-instance-id": expId, "x-company-id": companyId } }),
           fetch("/api/categories", { headers: { "x-instance-id": expId, "x-company-id": companyId } }),
         ]);
-
         if (sitesRes.ok) setSites(await sitesRes.json());
         if (catsRes.ok) setCategories(await catsRes.json());
       } catch {
-        // SDK unavailable or parent didn't respond — stay on companyId
+        // Network error — leave empty
+      } finally {
+        setLoading(false);
       }
     }
 
     resolveInstance();
-  }, [companyId, instanceId]);
+  }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleGridChange(cols: number) {
     setGridCols(cols);
@@ -315,7 +321,8 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
             <FilterIcon />
           </button>
 
-          <div className="hidden sm:block">
+          {/* Grid picker — desktop only, hidden on all mobile viewports */}
+          <div className="hidden lg:block">
             <GridPicker value={gridCols} onChange={handleGridChange} />
           </div>
 
@@ -349,27 +356,28 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
       )}
 
       {editMode && isAdmin && (
-        <div className="flex items-center gap-2 px-5 pb-4 flex-wrap">
+        /* Scrollable single row on mobile — no wrapping, compact pill buttons */
+        <div className="flex items-center gap-2 px-5 pb-4 overflow-x-auto scrollbar-none">
           <button
             onClick={() => setShowQuickAdd(true)}
-            className="flex items-center gap-1.5 px-3 py-2 sm:px-4 bg-white text-black rounded-xl text-xs sm:text-sm font-medium hover:bg-white/90 transition-colors"
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white text-black rounded-xl text-xs font-semibold hover:bg-white/90 transition-colors"
           >
             <BoltIcon />
             Quick Add
           </button>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 sm:px-4 bg-white/10 text-white rounded-xl text-xs sm:text-sm font-medium hover:bg-white/20 transition-colors"
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white/10 text-white rounded-xl text-xs font-medium hover:bg-white/20 transition-colors"
           >
-            <span className="text-base leading-none">+</span>
-            Add Website
+            <span className="text-sm leading-none font-medium">+</span>
+            Add
           </button>
           <button
             onClick={() => setShowManageCategories(true)}
-            className="flex items-center gap-1.5 px-3 py-2 sm:px-4 bg-white/10 text-white rounded-xl text-xs sm:text-sm font-medium hover:bg-white/20 transition-colors"
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white/10 text-white rounded-xl text-xs font-medium hover:bg-white/20 transition-colors"
           >
             <FolderIcon />
-            <span className="hidden xs:inline sm:inline">Manage </span>Categories
+            Categories
           </button>
         </div>
       )}
@@ -416,7 +424,19 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
 
       {/* Main grid */}
       <div className="px-5 pb-8">
-        {viewMode === "all" ? (
+        {loading ? (
+          /* Skeleton cards while instanceId resolves — prevents flash of wrong data */
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-[#141414] rounded-2xl overflow-hidden border border-white/5 animate-pulse">
+                <div className="w-full aspect-[4/3] bg-white/5" />
+                <div className="px-3 py-2.5">
+                  <div className="h-3.5 bg-white/10 rounded-full w-3/4" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : viewMode === "all" ? (
           filteredSites.length === 0 ? (
             <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
           ) : (
@@ -460,7 +480,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
               </div>
             ))
           )
-        )}
+        ) : null}
       </div>
 
       {/* Bulk action bar — floats above bottom when cards are selected */}
