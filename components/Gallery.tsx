@@ -50,7 +50,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
         const { createAppIframeSDK } = await import("@whop-apps/sdk");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sdk = createAppIframeSDK({ onMessage: {} as any });
-        const urlData = await sdk.getTopLevelUrlData();
+        const urlData = await sdk.getTopLevelUrlData({});
         const expId: string = urlData?.experienceId ?? "";
 
         if (!expId || expId === instanceId) return; // already correct
