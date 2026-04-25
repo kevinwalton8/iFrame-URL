@@ -20,6 +20,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [editMode, setEditMode] = useState(false);
   const [viewMode, setViewMode] = useState<"all" | "category">("all");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [gridCols, setGridCols] = useState<number>(() => {
@@ -61,6 +62,9 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     });
     return map;
   }, [filteredSites]);
+
+  // Category names that actually have sites (for the filter pills)
+  const activeCategoryNames = useMemo(() => Array.from(sitesByCategory.keys()), [sitesByCategory]);
 
   async function handleAddSite(data: Omit<Site, "id" | "createdAt">) {
     const res = await fetch("/api/sites", {
@@ -133,6 +137,24 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     setCategories((prev) => prev.filter((c) => c.id !== id));
   }
 
+  const gridClass = `grid grid-cols-2 sm:grid-cols-3 ${{
+    3: "lg:grid-cols-3",
+    4: "lg:grid-cols-4",
+    5: "lg:grid-cols-5",
+    6: "lg:grid-cols-6",
+    7: "lg:grid-cols-7",
+    8: "lg:grid-cols-8",
+  }[gridCols] ?? "lg:grid-cols-4"} gap-4`;
+
+  // Sites to show in category view — either one category or all
+  const categoryEntries = useMemo(() => {
+    if (selectedCategory) {
+      const sites = sitesByCategory.get(selectedCategory);
+      return sites ? [[selectedCategory, sites] as [string, Site[]]] : [];
+    }
+    return Array.from(sitesByCategory.entries());
+  }, [sitesByCategory, selectedCategory]);
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       {/* Header */}
@@ -141,7 +163,9 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
           <div className="w-7 h-7 rounded-md bg-white/10 flex items-center justify-center text-xs">
             🔗
           </div>
-          <span className="text-sm font-medium text-white/70">{sites.length} {sites.length === 1 ? "site" : "sites"}</span>
+          <span className="text-sm font-medium text-white/70">
+            {sites.length} {sites.length === 1 ? "site" : "sites"}
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -162,8 +186,10 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
             <FilterIcon />
           </button>
 
-          {/* Grid density picker */}
-          <GridPicker value={gridCols} onChange={handleGridChange} />
+          {/* Grid density picker — hidden on mobile since grid is fixed 2-col */}
+          <div className="hidden sm:block">
+            <GridPicker value={gridCols} onChange={handleGridChange} />
+          </div>
 
           {/* Settings / Edit toggle for admin */}
           {isAdmin && (
@@ -176,7 +202,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
               }`}
             >
               <SettingsIcon />
-              Settings
+              <span className="hidden sm:inline">Settings</span>
             </button>
           )}
         </div>
@@ -198,36 +224,37 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
 
       {/* Edit mode toolbar */}
       {editMode && isAdmin && (
-        <div className="flex items-center gap-3 px-5 pb-4">
+        <div className="flex items-center gap-2 px-5 pb-4 flex-wrap">
           <button
             onClick={() => setShowQuickAdd(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-xl text-sm font-medium hover:bg-white/90 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 sm:px-4 bg-white text-black rounded-xl text-xs sm:text-sm font-medium hover:bg-white/90 transition-colors"
           >
             <BoltIcon />
             Quick Add
           </button>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-xl text-sm font-medium hover:bg-white/20 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 sm:px-4 bg-white/10 text-white rounded-xl text-xs sm:text-sm font-medium hover:bg-white/20 transition-colors"
           >
-            <span className="text-lg leading-none">+</span>
+            <span className="text-base leading-none">+</span>
             Add Website
           </button>
           <button
             onClick={() => setShowManageCategories(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-xl text-sm font-medium hover:bg-white/20 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 sm:px-4 bg-white/10 text-white rounded-xl text-xs sm:text-sm font-medium hover:bg-white/20 transition-colors"
           >
             <FolderIcon />
-            Manage Categories
+            <span className="hidden xs:inline sm:inline">Manage </span>Categories
           </button>
         </div>
       )}
 
-      {/* View tabs */}
-      <div className="flex items-center gap-1 px-5 pb-4">
+      {/* View tabs + inline category filter pills */}
+      <div className="flex items-center gap-1.5 px-5 pb-4 overflow-x-auto scrollbar-none">
+        {/* All tab */}
         <button
-          onClick={() => setViewMode("all")}
-          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          onClick={() => { setViewMode("all"); setSelectedCategory(null); }}
+          className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
             viewMode === "all"
               ? "bg-white text-black"
               : "text-white/60 hover:text-white"
@@ -235,9 +262,11 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
         >
           All
         </button>
+
+        {/* By Category tab */}
         <button
-          onClick={() => setViewMode("category")}
-          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          onClick={() => { setViewMode("category"); setSelectedCategory(null); }}
+          className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
             viewMode === "category"
               ? "bg-white text-black"
               : "text-white/60 hover:text-white"
@@ -245,6 +274,30 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
         >
           By Category
         </button>
+
+        {/* Category filter pills — only visible when By Category is active */}
+        {viewMode === "category" && activeCategoryNames.length > 0 && (
+          <>
+            {/* Divider */}
+            <div className="flex-shrink-0 w-px h-4 bg-white/15 mx-0.5" />
+
+            {activeCategoryNames.map((name) => (
+              <button
+                key={name}
+                onClick={() =>
+                  setSelectedCategory((prev) => (prev === name ? null : name))
+                }
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+                  selectedCategory === name
+                    ? "bg-white/20 text-white ring-1 ring-white/30"
+                    : "text-white/50 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+          </>
+        )}
       </div>
 
       {/* Main grid */}
@@ -254,7 +307,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
             {filteredSites.length === 0 ? (
               <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
             ) : (
-              <div className={`grid grid-cols-2 sm:grid-cols-3 ${{ 3: "lg:grid-cols-3", 4: "lg:grid-cols-4", 5: "lg:grid-cols-5", 6: "lg:grid-cols-6", 7: "lg:grid-cols-7", 8: "lg:grid-cols-8" }[gridCols] ?? "lg:grid-cols-4"} gap-4`}>
+              <div className={gridClass}>
                 {filteredSites.map((site) => (
                   <SiteCard
                     key={site.id}
@@ -269,16 +322,16 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
           </>
         ) : (
           <>
-            {sitesByCategory.size === 0 ? (
+            {categoryEntries.length === 0 ? (
               <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
             ) : (
-              Array.from(sitesByCategory.entries()).map(([cat, catSites]) => (
+              categoryEntries.map(([cat, catSites]) => (
                 <div key={cat} className="mb-8">
                   <div className="flex items-center gap-2 mb-3">
                     <h2 className="text-sm font-semibold text-white">{cat}</h2>
                     <span className="text-xs text-white/40">{catSites.length}</span>
                   </div>
-                  <div className={`grid grid-cols-2 sm:grid-cols-3 ${{ 3: "lg:grid-cols-3", 4: "lg:grid-cols-4", 5: "lg:grid-cols-5", 6: "lg:grid-cols-6", 7: "lg:grid-cols-7", 8: "lg:grid-cols-8" }[gridCols] ?? "lg:grid-cols-4"} gap-4`}>
+                  <div className={gridClass}>
                     {catSites.map((site) => (
                       <SiteCard
                         key={site.id}
