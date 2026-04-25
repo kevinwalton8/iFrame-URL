@@ -6,16 +6,22 @@ import type { Site } from "@/lib/db";
 type Props = {
   site: Site;
   editMode: boolean;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (site: Site) => void;
 };
 
-export default function SiteCard({ site, editMode, onDelete, onEdit }: Props) {
+export default function SiteCard({ site, editMode, selected = false, onSelect, onDelete, onEdit }: Props) {
   const [imgError, setImgError] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  function handleClick(e: React.MouseEvent) {
-    if (editMode) return;
+  function handleCardClick(e: React.MouseEvent) {
+    if (editMode) {
+      // In edit mode, clicking the card body toggles selection
+      onSelect?.(site.id);
+      return;
+    }
     e.preventDefault();
     window.open(site.url, "_blank", "noopener,noreferrer");
   }
@@ -34,9 +40,15 @@ export default function SiteCard({ site, editMode, onDelete, onEdit }: Props) {
 
   return (
     <div
-      onClick={handleClick}
-      className={`group relative bg-[#141414] rounded-2xl overflow-hidden border border-white/5 transition-all duration-200 ${
-        !editMode ? "cursor-pointer hover:border-white/20 hover:bg-[#1a1a1a] hover:scale-[1.02]" : ""
+      onClick={handleCardClick}
+      className={`group relative bg-[#141414] rounded-2xl overflow-hidden border transition-all duration-150 ${
+        selected
+          ? "border-white ring-2 ring-white/60 scale-[0.97]"
+          : "border-white/5"
+      } ${
+        !editMode
+          ? "cursor-pointer hover:border-white/20 hover:bg-[#1a1a1a] hover:scale-[1.02]"
+          : "cursor-pointer"
       } ${deleting ? "opacity-40 pointer-events-none" : ""}`}
     >
       {/* Thumbnail */}
@@ -55,7 +67,7 @@ export default function SiteCard({ site, editMode, onDelete, onEdit }: Props) {
           </div>
         )}
 
-        {/* Hover overlay for non-edit mode */}
+        {/* Non-edit hover overlay */}
         {!editMode && (
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
             <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 rounded-full px-3 py-1 flex items-center gap-1.5 text-black text-xs font-medium">
@@ -63,6 +75,26 @@ export default function SiteCard({ site, editMode, onDelete, onEdit }: Props) {
               Visit
             </div>
           </div>
+        )}
+
+        {/* Selection checkbox — top-left, edit mode only */}
+        {editMode && (
+          <div className={`absolute top-2 left-2 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-150 ${
+            selected
+              ? "bg-white border-white"
+              : "bg-black/40 border-white/50 group-hover:border-white"
+          }`}>
+            {selected && (
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
+          </div>
+        )}
+
+        {/* Selected overlay tint */}
+        {editMode && selected && (
+          <div className="absolute inset-0 bg-white/10 pointer-events-none" />
         )}
       </div>
 

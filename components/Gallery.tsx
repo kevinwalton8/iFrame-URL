@@ -7,6 +7,7 @@ import AddSiteModal from "./AddSiteModal";
 import QuickAddModal from "./QuickAddModal";
 import ManageCategoriesModal from "./ManageCategoriesModal";
 import GridPicker from "./GridPicker";
+import BulkActionBar from "./BulkActionBar";
 
 type Props = {
   initialSites: Site[];
@@ -82,6 +83,31 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [showManageCategories, setShowManageCategories] = useState(false);
+
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(filteredSites.map((s) => s.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  // Clear selection when leaving edit mode
+  function handleSetEditMode(val: boolean) {
+    setEditMode(val);
+    if (!val) clearSelection();
+  }
 
   // Helper: headers for every API call — always includes both IDs so the
   // server can use the most-specific one available.
@@ -178,6 +204,61 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     );
   }
 
+  async function handleBulkDelete() {
+    if (!selectedIds.size) return;
+    if (!confirm(`Delete ${selectedIds.size} site${selectedIds.size > 1 ? "s" : ""}?`)) return;
+    for (const id of selectedIds) {
+      await fetch("/api/sites", {
+        method: "DELETE",
+        headers: apiHeaders(),
+        body: JSON.stringify({ id }),
+      });
+    }
+    setSites((prev) => prev.filter((s) => !selectedIds.has(s.id)));
+    clearSelection();
+  }
+
+  async function handleBulkAssignCategory(categoryName: string) {
+    const ids = Array.from(selectedIds);
+    await Promise.all(
+      ids.map((id) =>
+        fetch("/api/sites", {
+          method: "PUT",
+          headers: apiHeaders(),
+          body: JSON.stringify({ id, category: categoryName }),
+        })
+      )
+    );
+    setSites((prev) =>
+      prev.map((s) => (selectedIds.has(s.id) ? { ...s, category: categoryName } : s))
+    );
+    clearSelection();
+  }
+
+  async function handleBulkAddTag(tag: string) {
+    const ids = Array.from(selectedIds);
+    const updates = sites.filter((s) => selectedIds.has(s.id)).map((s) => ({
+      id: s.id,
+      tags: s.tags.includes(tag) ? s.tags : [...s.tags, tag],
+    }));
+    await Promise.all(
+      updates.map(({ id, tags }) =>
+        fetch("/api/sites", {
+          method: "PUT",
+          headers: apiHeaders(),
+          body: JSON.stringify({ id, tags }),
+        })
+      )
+    );
+    setSites((prev) =>
+      prev.map((s) => {
+        const u = updates.find((u) => u.id === s.id);
+        return u ? { ...s, tags: u.tags } : s;
+      })
+    );
+    clearSelection();
+  }
+
   async function handleDeleteCategory(id: string) {
     const res = await fetch("/api/categories", {
       method: "DELETE",
@@ -240,7 +321,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
 
           {isAdmin && (
             <button
-              onClick={() => setEditMode((v) => !v)}
+              onClick={() => handleSetEditMode(!editMode)}
               className={`flex items-center gap-1.5 px-3 h-8 rounded-full text-sm font-medium transition-colors ${
                 editMode
                   ? "bg-white text-black"
@@ -345,6 +426,8 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
                   key={site.id}
                   site={site}
                   editMode={editMode && isAdmin}
+                  selected={selectedIds.has(site.id)}
+                  onSelect={toggleSelect}
                   onDelete={handleDeleteSite}
                   onEdit={setEditingSite}
                 />
@@ -367,6 +450,8 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
                       key={site.id}
                       site={site}
                       editMode={editMode && isAdmin}
+                      selected={selectedIds.has(site.id)}
+                      onSelect={toggleSelect}
                       onDelete={handleDeleteSite}
                       onEdit={setEditingSite}
                     />
@@ -377,6 +462,20 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
           )
         )}
       </div>
+
+      {/* Bulk action bar — floats above bottom when cards are selected */}
+      {editMode && isAdmin && selectedIds.size > 0 && (
+        <BulkActionBar
+          count={selectedIds.size}
+          total={filteredSites.length}
+          categories={categories}
+          onSelectAll={selectAll}
+          onClear={clearSelection}
+          onDelete={handleBulkDelete}
+          onAssignCategory={handleBulkAssignCategory}
+          onAddTag={handleBulkAddTag}
+        />
+      )}
 
       {/* Modals */}
       {showQuickAdd && (
