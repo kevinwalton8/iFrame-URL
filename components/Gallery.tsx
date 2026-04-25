@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import type { Site, Category } from "@/lib/db";
 import SiteCard from "./SiteCard";
 import AddSiteModal from "./AddSiteModal";
@@ -31,6 +31,48 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     return 4;
   });
 
+  // instanceId is what we use as the KV namespace key.
+  // Starts as companyId (server-side fallback), then upgrades to
+  // the real Whop experienceId (unique per app instance) once the
+  // iframe SDK resolves it client-side.
+  const [instanceId, setInstanceId] = useState<string>(companyId);
+  const instanceResolved = useRef(false);
+
+  useEffect(() => {
+    if (instanceResolved.current) return;
+    instanceResolved.current = true;
+
+    async function resolveInstance() {
+      // If not inside a Whop iframe (e.g. local dev), skip SDK call entirely
+      if (typeof window === "undefined" || window.parent === window) return;
+
+      try {
+        const { createAppIframeSDK } = await import("@whop-apps/sdk");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sdk = createAppIframeSDK({ onMessage: {} as any });
+        const urlData = await sdk.getTopLevelUrlData();
+        const expId: string = urlData?.experienceId ?? "";
+
+        if (!expId || expId === instanceId) return; // already correct
+
+        // We have a real per-instance experience ID — refetch with it
+        setInstanceId(expId);
+
+        const [sitesRes, catsRes] = await Promise.all([
+          fetch("/api/sites", { headers: { "x-instance-id": expId, "x-company-id": companyId } }),
+          fetch("/api/categories", { headers: { "x-instance-id": expId, "x-company-id": companyId } }),
+        ]);
+
+        if (sitesRes.ok) setSites(await sitesRes.json());
+        if (catsRes.ok) setCategories(await catsRes.json());
+      } catch {
+        // SDK unavailable or parent didn't respond — stay on companyId
+      }
+    }
+
+    resolveInstance();
+  }, [companyId, instanceId]);
+
   function handleGridChange(cols: number) {
     setGridCols(cols);
     if (typeof window !== "undefined") localStorage.setItem("gallery-grid-cols", String(cols));
@@ -40,6 +82,16 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [showManageCategories, setShowManageCategories] = useState(false);
+
+  // Helper: headers for every API call — always includes both IDs so the
+  // server can use the most-specific one available.
+  function apiHeaders() {
+    return {
+      "Content-Type": "application/json",
+      "x-instance-id": instanceId,
+      "x-company-id": companyId,
+    };
+  }
 
   const filteredSites = useMemo(() => {
     if (!searchQuery.trim()) return sites;
@@ -63,13 +115,12 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     return map;
   }, [filteredSites]);
 
-  // Category names that actually have sites (for the filter pills)
   const activeCategoryNames = useMemo(() => Array.from(sitesByCategory.keys()), [sitesByCategory]);
 
   async function handleAddSite(data: Omit<Site, "id" | "createdAt">) {
     const res = await fetch("/api/sites", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-company-id": companyId },
+      headers: apiHeaders(),
       body: JSON.stringify(data),
     });
     if (!res.ok) return;
@@ -81,7 +132,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
   async function handleUpdateSite(id: string, data: Omit<Site, "id" | "createdAt">) {
     const res = await fetch("/api/sites", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "x-company-id": companyId },
+      headers: apiHeaders(),
       body: JSON.stringify({ id, ...data }),
     });
     if (!res.ok) return;
@@ -93,7 +144,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
   async function handleDeleteSite(id: string) {
     const res = await fetch("/api/sites", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json", "x-company-id": companyId },
+      headers: apiHeaders(),
       body: JSON.stringify({ id }),
     });
     if (!res.ok) return;
@@ -103,7 +154,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
   async function handleAddCategory(name: string) {
     const res = await fetch("/api/categories", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-company-id": companyId },
+      headers: apiHeaders(),
       body: JSON.stringify({ name }),
     });
     if (!res.ok) return;
@@ -114,7 +165,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
   async function handleRenameCategory(id: string, name: string) {
     const res = await fetch("/api/categories", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "x-company-id": companyId },
+      headers: apiHeaders(),
       body: JSON.stringify({ id, name }),
     });
     if (!res.ok) return;
@@ -130,7 +181,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
   async function handleDeleteCategory(id: string) {
     const res = await fetch("/api/categories", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json", "x-company-id": companyId },
+      headers: apiHeaders(),
       body: JSON.stringify({ id }),
     });
     if (!res.ok) return;
@@ -146,7 +197,6 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     8: "lg:grid-cols-8",
   }[gridCols] ?? "lg:grid-cols-4"} gap-4`;
 
-  // Sites to show in category view — either one category or all
   const categoryEntries = useMemo(() => {
     if (selectedCategory) {
       const sites = sitesByCategory.get(selectedCategory);
@@ -169,7 +219,6 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Search icon */}
           <button
             onClick={() => setShowSearch((v) => !v)}
             className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
@@ -178,7 +227,6 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
             <SearchIcon />
           </button>
 
-          {/* Filter icon */}
           <button
             className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
             aria-label="Filter"
@@ -186,12 +234,10 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
             <FilterIcon />
           </button>
 
-          {/* Grid density picker — hidden on mobile since grid is fixed 2-col */}
           <div className="hidden sm:block">
             <GridPicker value={gridCols} onChange={handleGridChange} />
           </div>
 
-          {/* Settings / Edit toggle for admin */}
           {isAdmin && (
             <button
               onClick={() => setEditMode((v) => !v)}
@@ -208,7 +254,6 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
         </div>
       </div>
 
-      {/* Search bar */}
       {showSearch && (
         <div className="px-5 pb-3">
           <input
@@ -222,7 +267,6 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
         </div>
       )}
 
-      {/* Edit mode toolbar */}
       {editMode && isAdmin && (
         <div className="flex items-center gap-2 px-5 pb-4 flex-wrap">
           <button
@@ -251,42 +295,31 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
 
       {/* View tabs + inline category filter pills */}
       <div className="flex items-center gap-1.5 px-5 pb-4 overflow-x-auto scrollbar-none">
-        {/* All tab */}
         <button
           onClick={() => { setViewMode("all"); setSelectedCategory(null); }}
           className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            viewMode === "all"
-              ? "bg-white text-black"
-              : "text-white/60 hover:text-white"
+            viewMode === "all" ? "bg-white text-black" : "text-white/60 hover:text-white"
           }`}
         >
           All
         </button>
 
-        {/* By Category tab */}
         <button
           onClick={() => { setViewMode("category"); setSelectedCategory(null); }}
           className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            viewMode === "category"
-              ? "bg-white text-black"
-              : "text-white/60 hover:text-white"
+            viewMode === "category" ? "bg-white text-black" : "text-white/60 hover:text-white"
           }`}
         >
           By Category
         </button>
 
-        {/* Category filter pills — only visible when By Category is active */}
         {viewMode === "category" && activeCategoryNames.length > 0 && (
           <>
-            {/* Divider */}
             <div className="flex-shrink-0 w-px h-4 bg-white/15 mx-0.5" />
-
             {activeCategoryNames.map((name) => (
               <button
                 key={name}
-                onClick={() =>
-                  setSelectedCategory((prev) => (prev === name ? null : name))
-                }
+                onClick={() => setSelectedCategory((prev) => (prev === name ? null : name))}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
                   selectedCategory === name
                     ? "bg-white/20 text-white ring-1 ring-white/30"
@@ -303,49 +336,45 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
       {/* Main grid */}
       <div className="px-5 pb-8">
         {viewMode === "all" ? (
-          <>
-            {filteredSites.length === 0 ? (
-              <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
-            ) : (
-              <div className={gridClass}>
-                {filteredSites.map((site) => (
-                  <SiteCard
-                    key={site.id}
-                    site={site}
-                    editMode={editMode && isAdmin}
-                    onDelete={handleDeleteSite}
-                    onEdit={setEditingSite}
-                  />
-                ))}
-              </div>
-            )}
-          </>
+          filteredSites.length === 0 ? (
+            <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
+          ) : (
+            <div className={gridClass}>
+              {filteredSites.map((site) => (
+                <SiteCard
+                  key={site.id}
+                  site={site}
+                  editMode={editMode && isAdmin}
+                  onDelete={handleDeleteSite}
+                  onEdit={setEditingSite}
+                />
+              ))}
+            </div>
+          )
         ) : (
-          <>
-            {categoryEntries.length === 0 ? (
-              <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
-            ) : (
-              categoryEntries.map(([cat, catSites]) => (
-                <div key={cat} className="mb-8">
-                  <div className="flex items-center gap-2 mb-3">
-                    <h2 className="text-sm font-semibold text-white">{cat}</h2>
-                    <span className="text-xs text-white/40">{catSites.length}</span>
-                  </div>
-                  <div className={gridClass}>
-                    {catSites.map((site) => (
-                      <SiteCard
-                        key={site.id}
-                        site={site}
-                        editMode={editMode && isAdmin}
-                        onDelete={handleDeleteSite}
-                        onEdit={setEditingSite}
-                      />
-                    ))}
-                  </div>
+          categoryEntries.length === 0 ? (
+            <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
+          ) : (
+            categoryEntries.map(([cat, catSites]) => (
+              <div key={cat} className="mb-8">
+                <div className="flex items-center gap-2 mb-3">
+                  <h2 className="text-sm font-semibold text-white">{cat}</h2>
+                  <span className="text-xs text-white/40">{catSites.length}</span>
                 </div>
-              ))
-            )}
-          </>
+                <div className={gridClass}>
+                  {catSites.map((site) => (
+                    <SiteCard
+                      key={site.id}
+                      site={site}
+                      editMode={editMode && isAdmin}
+                      onDelete={handleDeleteSite}
+                      onEdit={setEditingSite}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))
+          )
         )}
       </div>
 
@@ -360,7 +389,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
           onAdd={async (data) => {
             const res = await fetch("/api/sites", {
               method: "POST",
-              headers: { "Content-Type": "application/json", "x-company-id": companyId },
+              headers: apiHeaders(),
               body: JSON.stringify(data),
             });
             if (!res.ok) throw new Error("Failed to save");
@@ -443,7 +472,6 @@ function SearchIcon() {
     </svg>
   );
 }
-
 function FilterIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -451,7 +479,6 @@ function FilterIcon() {
     </svg>
   );
 }
-
 function SettingsIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -460,7 +487,6 @@ function SettingsIcon() {
     </svg>
   );
 }
-
 function FolderIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -468,7 +494,6 @@ function FolderIcon() {
     </svg>
   );
 }
-
 function BoltIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

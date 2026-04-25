@@ -5,8 +5,15 @@ import { headers } from "next/headers";
 
 const FALLBACK_COMPANY_ID = process.env.WHOP_COMPANY_ID ?? "";
 
+// Use the most-specific ID available:
+// x-instance-id = per-app-instance experienceId (preferred — isolates duplicate installs)
+// x-company-id  = per-company fallback
 function getCompanyId(req: NextRequest): string {
-  return req.headers.get("x-company-id") || FALLBACK_COMPANY_ID;
+  return (
+    req.headers.get("x-instance-id") ||
+    req.headers.get("x-company-id") ||
+    FALLBACK_COMPANY_ID
+  );
 }
 
 async function checkAdmin(_req: NextRequest): Promise<boolean> {
