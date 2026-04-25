@@ -6,6 +6,7 @@ import type { Site, Category } from "@/lib/db";
 type Props = {
   categories: Category[];
   companyId: string;
+  defaultCategory?: string;
   onAdd: (data: Omit<Site, "id" | "createdAt">) => Promise<void>;
   onClose: () => void;
   onCreateCategory: (name: string) => Promise<void>;
@@ -13,9 +14,11 @@ type Props = {
 
 type Status = "idle" | "fetching" | "saving" | "done" | "error";
 
-export default function QuickAddModal({ categories, companyId, onAdd, onClose, onCreateCategory }: Props) {
+export default function QuickAddModal({ categories, companyId, defaultCategory, onAdd, onClose, onCreateCategory }: Props) {
   const [url, setUrl] = useState("");
-  const [category, setCategory] = useState(categories[0]?.name ?? "Uncategorized");
+  const [category, setCategory] = useState(
+    defaultCategory ?? categories[0]?.name ?? "Uncategorized"
+  );
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [newCatMode, setNewCatMode] = useState(false);

@@ -354,6 +354,9 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
         <QuickAddModal
           categories={categories}
           companyId={companyId}
+          defaultCategory={
+            viewMode === "category" && selectedCategory ? selectedCategory : undefined
+          }
           onAdd={async (data) => {
             const res = await fetch("/api/sites", {
               method: "POST",
