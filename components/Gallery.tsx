@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import type { Site, Category } from "@/lib/db";
 import SiteCard from "./SiteCard";
 import AddSiteModal from "./AddSiteModal";
+import QuickAddModal from "./QuickAddModal";
 import ManageCategoriesModal from "./ManageCategoriesModal";
 
 type Props = {
@@ -21,6 +22,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [showManageCategories, setShowManageCategories] = useState(false);
 
@@ -185,8 +187,15 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
       {editMode && isAdmin && (
         <div className="flex items-center gap-3 px-5 pb-4">
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => setShowQuickAdd(true)}
             className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-xl text-sm font-medium hover:bg-white/90 transition-colors"
+          >
+            <BoltIcon />
+            Quick Add
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-xl text-sm font-medium hover:bg-white/20 transition-colors"
           >
             <span className="text-lg leading-none">+</span>
             Add Website
@@ -232,7 +241,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
             {filteredSites.length === 0 ? (
               <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 min-[2100px]:grid-cols-5 min-[4000px]:grid-cols-6 gap-4">
                 {filteredSites.map((site) => (
                   <SiteCard
                     key={site.id}
@@ -256,7 +265,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
                     <h2 className="text-sm font-semibold text-white">{cat}</h2>
                     <span className="text-xs text-white/40">{catSites.length}</span>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 min-[2100px]:grid-cols-5 min-[4000px]:grid-cols-6 gap-4">
                     {catSites.map((site) => (
                       <SiteCard
                         key={site.id}
@@ -275,6 +284,26 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
       </div>
 
       {/* Modals */}
+      {showQuickAdd && (
+        <QuickAddModal
+          categories={categories}
+          companyId={companyId}
+          onAdd={async (data) => {
+            const res = await fetch("/api/sites", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-company-id": companyId },
+              body: JSON.stringify(data),
+            });
+            if (!res.ok) throw new Error("Failed to save");
+            const newSite: Site = await res.json();
+            setSites((prev) => [...prev, newSite]);
+            setShowQuickAdd(false);
+          }}
+          onClose={() => setShowQuickAdd(false)}
+          onCreateCategory={handleAddCategory}
+        />
+      )}
+
       {showAddModal && (
         <AddSiteModal
           categories={categories}
@@ -367,6 +396,14 @@ function FolderIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function BoltIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
     </svg>
   );
 }

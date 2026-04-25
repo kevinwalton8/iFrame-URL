@@ -35,7 +35,8 @@
       "Bash(curl -s -X POST http://localhost:3000/api/sites -H 'Content-Type: application/json' -d '{\"title\":\"Inspo.page\",\"url\":\"https://www.inspo.page/\",\"imageUrl\":\"https://inspo.page/og.png?v=2\",\"description\":\"Curated website inspiration at the component level\",\"category\":\"Site Collections\",\"tags\":[]}')",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }
