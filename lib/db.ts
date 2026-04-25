@@ -19,7 +19,7 @@ export type Category = {
   createdAt: string;
 };
 
-// Seed file baked into the deployment — always readable
+// Seed file baked into the deployment — always readable, never written to on Vercel
 const SEED_FILE = path.join(process.cwd(), "data", "gallery.json");
 
 type LocalData = {
@@ -27,8 +27,9 @@ type LocalData = {
   categories: Category[];
 };
 
-// In dev, read/write the seed file directly.
-// On Vercel without KV, use /tmp keyed by companyId so tenants don't mix.
+// /tmp is keyed by companyId so tenants don't share data.
+// NOTE: /tmp is ephemeral on Vercel — it is ONLY used as a last resort
+// when KV is unavailable. Any data written here WILL be lost on redeploy.
 function tmpFile(companyId: string) {
   return `/tmp/gallery-${companyId}.json`;
 }
@@ -56,19 +57,36 @@ function writeLocal(data: LocalData, companyId?: string) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-const useKV = !!(
-  process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
-);
+// Evaluated at module load — if KV env vars are present we always use KV.
+// On Vercel, if these vars are missing it means KV wasn't connected: data
+// will land in ephemeral /tmp and disappear on the next redeploy.
+const KV_URL = process.env.KV_REST_API_URL;
+const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+export const useKV = !!(KV_URL && KV_TOKEN);
+
+// Warn loudly in server logs when running on Vercel without KV
+if (process.env.VERCEL && !useKV) {
+  console.warn(
+    "[db] WARNING: Running on Vercel WITHOUT Vercel KV. " +
+    "Data is stored in /tmp and will be lost on every redeploy. " +
+    "Connect an Upstash KV store in your Vercel project settings."
+  );
+}
 
 // KV keys are namespaced by companyId so every installer has their own data.
-// Falls back to a shared key for local dev (no companyId needed).
 function kvKey(base: string, companyId?: string) {
   return companyId ? `${base}:${companyId}` : base;
 }
 
 export async function getSites(companyId?: string): Promise<Site[]> {
   if (useKV) {
-    return (await kv.get<Site[]>(kvKey("sites", companyId))) ?? [];
+    try {
+      return (await kv.get<Site[]>(kvKey("sites", companyId))) ?? [];
+    } catch (err) {
+      console.error("[db] KV getSites error:", err);
+      // Don't fall back to /tmp — surface the error so it's visible
+      throw err;
+    }
   }
   return readLocal(companyId).sites;
 }
@@ -88,7 +106,12 @@ export async function updateSite(
 
 export async function saveSites(sites: Site[], companyId?: string): Promise<void> {
   if (useKV) {
-    await kv.set(kvKey("sites", companyId), sites);
+    try {
+      await kv.set(kvKey("sites", companyId), sites);
+    } catch (err) {
+      console.error("[db] KV saveSites error:", err);
+      throw err;
+    }
     return;
   }
   const data = readLocal(companyId);
@@ -98,14 +121,24 @@ export async function saveSites(sites: Site[], companyId?: string): Promise<void
 
 export async function getCategories(companyId?: string): Promise<Category[]> {
   if (useKV) {
-    return (await kv.get<Category[]>(kvKey("categories", companyId))) ?? [];
+    try {
+      return (await kv.get<Category[]>(kvKey("categories", companyId))) ?? [];
+    } catch (err) {
+      console.error("[db] KV getCategories error:", err);
+      throw err;
+    }
   }
   return readLocal(companyId).categories;
 }
 
 export async function saveCategories(categories: Category[], companyId?: string): Promise<void> {
   if (useKV) {
-    await kv.set(kvKey("categories", companyId), categories);
+    try {
+      await kv.set(kvKey("categories", companyId), categories);
+    } catch (err) {
+      console.error("[db] KV saveCategories error:", err);
+      throw err;
+    }
     return;
   }
   const data = readLocal(companyId);
