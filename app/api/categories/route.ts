@@ -3,14 +3,19 @@ import { getCategories, saveCategories, type Category } from "@/lib/db";
 import { hasAccess, authorizedUserOn } from "@whop-apps/sdk";
 import { headers } from "next/headers";
 
-const COMPANY_ID = process.env.WHOP_COMPANY_ID ?? "";
+const FALLBACK_COMPANY_ID = process.env.WHOP_COMPANY_ID ?? "";
+
+function getCompanyId(req: NextRequest): string {
+  return req.headers.get("x-company-id") || FALLBACK_COMPANY_ID;
+}
 
 async function checkAdmin(_req: NextRequest): Promise<boolean> {
   if (process.env.DEV_ADMIN === "true") return true;
-  if (!COMPANY_ID) return false;
+  const companyId = getCompanyId(_req);
+  if (!companyId) return false;
   try {
     return await hasAccess({
-      to: authorizedUserOn(COMPANY_ID),
+      to: authorizedUserOn(companyId),
       headers: await headers(),
     });
   } catch {
@@ -18,8 +23,9 @@ async function checkAdmin(_req: NextRequest): Promise<boolean> {
   }
 }
 
-export async function GET() {
-  const categories = await getCategories();
+export async function GET(req: NextRequest) {
+  const companyId = getCompanyId(req);
+  const categories = await getCategories(companyId);
   return NextResponse.json(categories);
 }
 
@@ -28,8 +34,9 @@ export async function POST(req: NextRequest) {
   if (!isAdmin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
+  const companyId = getCompanyId(req);
   const { name } = await req.json();
-  const categories = await getCategories();
+  const categories = await getCategories(companyId);
   if (categories.find((c) => c.name.toLowerCase() === name.toLowerCase())) {
     return NextResponse.json({ error: "Category already exists" }, { status: 409 });
   }
@@ -39,7 +46,7 @@ export async function POST(req: NextRequest) {
     createdAt: new Date().toISOString(),
   };
   categories.push(newCat);
-  await saveCategories(categories);
+  await saveCategories(categories, companyId);
   return NextResponse.json(newCat, { status: 201 });
 }
 
@@ -48,14 +55,15 @@ export async function PUT(req: NextRequest) {
   if (!isAdmin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
+  const companyId = getCompanyId(req);
   const { id, name } = await req.json();
-  const categories = await getCategories();
+  const categories = await getCategories(companyId);
   const idx = categories.findIndex((c) => c.id === id);
   if (idx === -1) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   categories[idx].name = name;
-  await saveCategories(categories);
+  await saveCategories(categories, companyId);
   return NextResponse.json(categories[idx]);
 }
 
@@ -64,9 +72,10 @@ export async function DELETE(req: NextRequest) {
   if (!isAdmin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
+  const companyId = getCompanyId(req);
   const { id } = await req.json();
-  const categories = await getCategories();
+  const categories = await getCategories(companyId);
   const updated = categories.filter((c) => c.id !== id);
-  await saveCategories(updated);
+  await saveCategories(updated, companyId);
   return NextResponse.json({ ok: true });
 }

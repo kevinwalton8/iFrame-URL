@@ -10,9 +10,10 @@ type Props = {
   initialSites: Site[];
   initialCategories: Category[];
   isAdmin: boolean;
+  companyId: string;
 };
 
-export default function Gallery({ initialSites, initialCategories, isAdmin }: Props) {
+export default function Gallery({ initialSites, initialCategories, isAdmin, companyId }: Props) {
   const [sites, setSites] = useState<Site[]>(initialSites);
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [editMode, setEditMode] = useState(false);
@@ -48,7 +49,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
   async function handleAddSite(data: Omit<Site, "id" | "createdAt">) {
     const res = await fetch("/api/sites", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-company-id": companyId },
       body: JSON.stringify(data),
     });
     if (!res.ok) return;
@@ -60,7 +61,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
   async function handleUpdateSite(id: string, data: Omit<Site, "id" | "createdAt">) {
     const res = await fetch("/api/sites", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-company-id": companyId },
       body: JSON.stringify({ id, ...data }),
     });
     if (!res.ok) return;
@@ -72,7 +73,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
   async function handleDeleteSite(id: string) {
     const res = await fetch("/api/sites", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-company-id": companyId },
       body: JSON.stringify({ id }),
     });
     if (!res.ok) return;
@@ -82,7 +83,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
   async function handleAddCategory(name: string) {
     const res = await fetch("/api/categories", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-company-id": companyId },
       body: JSON.stringify({ name }),
     });
     if (!res.ok) return;
@@ -93,7 +94,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
   async function handleRenameCategory(id: string, name: string) {
     const res = await fetch("/api/categories", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-company-id": companyId },
       body: JSON.stringify({ id, name }),
     });
     if (!res.ok) return;
@@ -109,7 +110,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin }: Pr
   async function handleDeleteCategory(id: string) {
     const res = await fetch("/api/categories", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-company-id": companyId },
       body: JSON.stringify({ id }),
     });
     if (!res.ok) return;

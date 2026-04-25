@@ -20,7 +20,22 @@
       "Bash(brew install *)",
       "Bash(gh auth *)",
       "Bash(curl -s https://url-gallery.vercel.app/)",
-      "Bash(curl -sI https://url-gallery.vercel.app/)"
+      "Bash(curl -sI https://url-gallery.vercel.app/)",
+      "Bash(curl -s \"http://localhost:3000/api/og-fetch?url=https://ogfolio.com/\")",
+      "Bash(curl -s \"http://localhost:3000/api/og-fetch?url=https://www.siteofsites.co/\")",
+      "Bash(curl -s \"http://localhost:3000/api/og-fetch?url=https://www.killerportfolio.com/\")",
+      "Bash(curl -s \"http://localhost:3000/api/og-fetch?url=https://www.siteinspire.com/\")",
+      "Bash(curl -s \"http://localhost:3000/api/og-fetch?url=https://www.inspo.page/\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/categories -H 'Content-Type: application/json' -d '{\"name\":\"Site Collections\"}')",
+      "Bash(wait)",
+      "Bash(curl -s -X POST http://localhost:3000/api/sites -H 'Content-Type: application/json' -d '{\"title\":\"OGfolio\",\"url\":\"https://ogfolio.com/\",\"imageUrl\":\"https://framerusercontent.com/images/2IO3VHGBoDfX608IyNCXNpSA.png\",\"description\":\"A curated library of Open Graph images\",\"category\":\"Site Collections\",\"tags\":[]}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/sites -H 'Content-Type: application/json' -d '{\"title\":\"SiteofSites\",\"url\":\"https://www.siteofsites.co/\",\"imageUrl\":\"https://static.wixstatic.com/media/b58e39_a4a9f04a13324bd2ab2c17ef600e5546~mv2.png/v1/fit/w_2500,h_1330,al_c/b58e39_a4a9f04a13324bd2ab2c17ef600e5546~mv2.png\",\"description\":\"The best web design inspiration 2026\",\"category\":\"Site Collections\",\"tags\":[]}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/sites -H 'Content-Type: application/json' -d '{\"title\":\"Killerportfolio\",\"url\":\"https://www.killerportfolio.com/\",\"imageUrl\":\"https://killerportfolio.com/images/social.jpg\",\"description\":\"A curated selection of beautifully designed portfolio websites\",\"category\":\"Site Collections\",\"tags\":[]}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/sites -H 'Content-Type: application/json' -d '{\"title\":\"SiteInspire\",\"url\":\"https://www.siteinspire.com/\",\"imageUrl\":\"\",\"description\":\"A showcase of the finest web and interactive design\",\"category\":\"Site Collections\",\"tags\":[]}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/sites -H 'Content-Type: application/json' -d '{\"title\":\"Inspo.page\",\"url\":\"https://www.inspo.page/\",\"imageUrl\":\"https://inspo.page/og.png?v=2\",\"description\":\"Curated website inspiration at the component level\",\"category\":\"Site Collections\",\"tags\":[]}')",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

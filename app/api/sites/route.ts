@@ -3,14 +3,19 @@ import { getSites, saveSites, updateSite, type Site } from "@/lib/db";
 import { hasAccess, authorizedUserOn } from "@whop-apps/sdk";
 import { headers } from "next/headers";
 
-const COMPANY_ID = process.env.WHOP_COMPANY_ID ?? "";
+const FALLBACK_COMPANY_ID = process.env.WHOP_COMPANY_ID ?? "";
+
+function getCompanyId(req: NextRequest): string {
+  return req.headers.get("x-company-id") || FALLBACK_COMPANY_ID;
+}
 
 async function checkAdmin(_req: NextRequest): Promise<boolean> {
   if (process.env.DEV_ADMIN === "true") return true;
-  if (!COMPANY_ID) return false;
+  const companyId = getCompanyId(_req);
+  if (!companyId) return false;
   try {
     return await hasAccess({
-      to: authorizedUserOn(COMPANY_ID),
+      to: authorizedUserOn(companyId),
       headers: await headers(),
     });
   } catch {
@@ -18,8 +23,9 @@ async function checkAdmin(_req: NextRequest): Promise<boolean> {
   }
 }
 
-export async function GET() {
-  const sites = await getSites();
+export async function GET(req: NextRequest) {
+  const companyId = getCompanyId(req);
+  const sites = await getSites(companyId);
   return NextResponse.json(sites);
 }
 
@@ -28,8 +34,9 @@ export async function POST(req: NextRequest) {
   if (!isAdmin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
+  const companyId = getCompanyId(req);
   const body = await req.json();
-  const sites = await getSites();
+  const sites = await getSites(companyId);
   const newSite: Site = {
     id: crypto.randomUUID(),
     title: body.title,
@@ -41,7 +48,7 @@ export async function POST(req: NextRequest) {
     createdAt: new Date().toISOString(),
   };
   sites.push(newSite);
-  await saveSites(sites);
+  await saveSites(sites, companyId);
   return NextResponse.json(newSite, { status: 201 });
 }
 
@@ -50,9 +57,10 @@ export async function PUT(req: NextRequest) {
   if (!isAdmin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
+  const companyId = getCompanyId(req);
   const { id, ...patch } = await req.json();
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  const updated = await updateSite(id, patch);
+  const updated = await updateSite(id, patch, companyId);
   if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(updated);
 }
@@ -62,9 +70,10 @@ export async function DELETE(req: NextRequest) {
   if (!isAdmin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
+  const companyId = getCompanyId(req);
   const { id } = await req.json();
-  const sites = await getSites();
+  const sites = await getSites(companyId);
   const updated = sites.filter((s) => s.id !== id);
-  await saveSites(updated);
+  await saveSites(updated, companyId);
   return NextResponse.json({ ok: true });
 }
