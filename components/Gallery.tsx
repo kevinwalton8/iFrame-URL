@@ -6,6 +6,7 @@ import SiteCard from "./SiteCard";
 import AddSiteModal from "./AddSiteModal";
 import QuickAddModal from "./QuickAddModal";
 import ManageCategoriesModal from "./ManageCategoriesModal";
+import GridPicker from "./GridPicker";
 
 type Props = {
   initialSites: Site[];
@@ -21,6 +22,19 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
   const [viewMode, setViewMode] = useState<"all" | "category">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [gridCols, setGridCols] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("gallery-grid-cols");
+      if (saved) return Number(saved);
+    }
+    return 4;
+  });
+
+  function handleGridChange(cols: number) {
+    setGridCols(cols);
+    if (typeof window !== "undefined") localStorage.setItem("gallery-grid-cols", String(cols));
+  }
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
@@ -148,6 +162,9 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
             <FilterIcon />
           </button>
 
+          {/* Grid density picker */}
+          <GridPicker value={gridCols} onChange={handleGridChange} />
+
           {/* Settings / Edit toggle for admin */}
           {isAdmin && (
             <button
@@ -237,7 +254,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
             {filteredSites.length === 0 ? (
               <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 min-[2100px]:grid-cols-5 gap-4">
+              <div className={`grid grid-cols-2 sm:grid-cols-3 ${{ 3: "lg:grid-cols-3", 4: "lg:grid-cols-4", 5: "lg:grid-cols-5", 6: "lg:grid-cols-6", 7: "lg:grid-cols-7", 8: "lg:grid-cols-8" }[gridCols] ?? "lg:grid-cols-4"} gap-4`}>
                 {filteredSites.map((site) => (
                   <SiteCard
                     key={site.id}
@@ -261,7 +278,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
                     <h2 className="text-sm font-semibold text-white">{cat}</h2>
                     <span className="text-xs text-white/40">{catSites.length}</span>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 min-[2100px]:grid-cols-5 gap-4">
+                  <div className={`grid grid-cols-2 sm:grid-cols-3 ${{ 3: "lg:grid-cols-3", 4: "lg:grid-cols-4", 5: "lg:grid-cols-5", 6: "lg:grid-cols-6", 7: "lg:grid-cols-7", 8: "lg:grid-cols-8" }[gridCols] ?? "lg:grid-cols-4"} gap-4`}>
                     {catSites.map((site) => (
                       <SiteCard
                         key={site.id}
