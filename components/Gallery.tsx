@@ -237,7 +237,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
             {filteredSites.length === 0 ? (
               <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 min-[2100px]:grid-cols-5 min-[4000px]:grid-cols-6 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 min-[2100px]:grid-cols-5 gap-4">
                 {filteredSites.map((site) => (
                   <SiteCard
                     key={site.id}
@@ -261,7 +261,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
                     <h2 className="text-sm font-semibold text-white">{cat}</h2>
                     <span className="text-xs text-white/40">{catSites.length}</span>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 min-[2100px]:grid-cols-5 min-[4000px]:grid-cols-6 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 min-[2100px]:grid-cols-5 gap-4">
                     {catSites.map((site) => (
                       <SiteCard
                         key={site.id}
