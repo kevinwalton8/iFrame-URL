@@ -36,7 +36,17 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node -e \"const p = require\\('/Users/kevin_walton/Documents/Personal Branding/Whop Apps/URL Gallery/node_modules/@whop-apps/sdk/package.json'\\); console.log\\(JSON.stringify\\(p.exports, null, 2\\)\\)\")",
+      "Bash(gh api *)",
+      "Bash(node node_modules/typescript/lib/tsc.js --noEmit)",
+      "Bash(git commit -m 'Fix: pass required empty arg to getTopLevelUrlData *)",
+      "WebFetch(domain:vercel.com)",
+      "Bash(git commit -m 'Fix syntax error: remove extra ternary arm in main grid JSX *)",
+      "Bash(git commit -m 'Add temporary clear-all endpoint \\(remove after use\\) *)",
+      "Bash(git commit *)",
+      "Bash(rm \"/Users/kevin_walton/Documents/Personal Branding/Whop Apps/URL Gallery/app/api/clear-all/route.ts\")",
+      "Bash(rmdir \"/Users/kevin_walton/Documents/Personal Branding/Whop Apps/URL Gallery/app/api/clear-all\")"
     ]
   }
 }
