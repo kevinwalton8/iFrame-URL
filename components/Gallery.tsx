@@ -480,7 +480,7 @@ export default function Gallery({ isAdmin, companyId }: Props) {
               </div>
             ))
           )
-        ) : null}
+        )}
       </div>
 
       {/* Bulk action bar — floats above bottom when cards are selected */}
