@@ -323,10 +323,7 @@ export default function Gallery({ isAdmin, companyId }: Props) {
             <FilterIcon />
           </button>
 
-          {/* Grid picker — desktop only, hidden on all mobile viewports */}
-          <div className="hidden lg:block">
-            <GridPicker value={gridCols} onChange={handleGridChange} />
-          </div>
+          <GridPicker value={gridCols} onChange={handleGridChange} />
 
           {isAdmin && (
             <button
