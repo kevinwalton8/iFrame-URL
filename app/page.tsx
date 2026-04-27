@@ -1,13 +1,11 @@
 import { headers } from "next/headers";
 import { hasAccess, authorizedUserOn, validateToken } from "@whop-apps/sdk";
+import { getSites, getCategories } from "@/lib/db";
 import Gallery from "@/components/Gallery";
 
 export default async function Home() {
   const hdrs = await headers();
 
-  // Resolve the company ID from the live Whop session token.
-  // Used for admin auth check only — data is fetched client-side
-  // with the per-instance experienceId to prevent flashing wrong data.
   let companyId = process.env.WHOP_COMPANY_ID ?? "";
   try {
     const tokenData = await validateToken({ headers: hdrs, dontThrow: true });
@@ -29,5 +27,18 @@ export default async function Home() {
     }
   }
 
-  return <Gallery isAdmin={isAdmin} companyId={companyId} />;
+  // Fetch data server-side so the gallery renders immediately with no loading flash
+  const [sites, categories] = await Promise.all([
+    getSites(companyId),
+    getCategories(companyId),
+  ]);
+
+  return (
+    <Gallery
+      initialSites={sites}
+      initialCategories={categories}
+      isAdmin={isAdmin}
+      companyId={companyId}
+    />
+  );
 }

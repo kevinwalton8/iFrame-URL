@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import type { Site, Category } from "@/lib/db";
 import SiteCard from "./SiteCard";
 import AddSiteModal from "./AddSiteModal";
@@ -10,16 +10,15 @@ import GridPicker from "./GridPicker";
 import BulkActionBar from "./BulkActionBar";
 
 type Props = {
+  initialSites: Site[];
+  initialCategories: Category[];
   isAdmin: boolean;
   companyId: string;
 };
 
-export default function Gallery({ isAdmin, companyId }: Props) {
-  // Always start empty — the client fetches with the correct experienceId.
-  // This prevents a flash of server-rendered data from the wrong instance key.
-  const [sites, setSites] = useState<Site[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function Gallery({ initialSites, initialCategories, isAdmin, companyId }: Props) {
+  const [sites, setSites] = useState<Site[]>(initialSites);
+  const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [editMode, setEditMode] = useState(false);
   const [viewMode, setViewMode] = useState<"all" | "category">("all");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -32,55 +31,6 @@ export default function Gallery({ isAdmin, companyId }: Props) {
     }
     return 4;
   });
-
-  // instanceId is what we use as the KV namespace key.
-  // Starts as companyId (server-side fallback), then upgrades to
-  // the real Whop experienceId (unique per app instance) once the
-  // iframe SDK resolves it client-side.
-  const [instanceId, setInstanceId] = useState<string>(companyId);
-  const instanceResolved = useRef(false);
-
-  useEffect(() => {
-    if (instanceResolved.current) return;
-    instanceResolved.current = true;
-
-    async function resolveInstance() {
-      let expId = companyId; // fallback
-
-      // Try to get the per-instance experienceId from the Whop iframe SDK.
-      // Race against a 2.5s timeout so a non-responsive parent never blocks loading.
-      if (typeof window !== "undefined" && window.parent !== window) {
-        try {
-          const { createAppIframeSDK } = await import("@whop-apps/sdk");
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const sdk = createAppIframeSDK({ onMessage: {} as any });
-          const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
-          const urlData = await Promise.race([sdk.getTopLevelUrlData({}), timeout]);
-          if (urlData?.experienceId) expId = urlData.experienceId;
-        } catch {
-          // SDK unavailable — stay on companyId
-        }
-      }
-
-      setInstanceId(expId);
-
-      // Always fetch client-side so we never show the wrong instance's data
-      try {
-        const [sitesRes, catsRes] = await Promise.all([
-          fetch("/api/sites", { headers: { "x-instance-id": expId, "x-company-id": companyId } }),
-          fetch("/api/categories", { headers: { "x-instance-id": expId, "x-company-id": companyId } }),
-        ]);
-        if (sitesRes.ok) setSites(await sitesRes.json());
-        if (catsRes.ok) setCategories(await catsRes.json());
-      } catch {
-        // Network error — leave empty
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    resolveInstance();
-  }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleGridChange(cols: number) {
     setGridCols(cols);
@@ -117,12 +67,9 @@ export default function Gallery({ isAdmin, companyId }: Props) {
     if (!val) clearSelection();
   }
 
-  // Helper: headers for every API call — always includes both IDs so the
-  // server can use the most-specific one available.
   function apiHeaders() {
     return {
       "Content-Type": "application/json",
-      "x-instance-id": instanceId,
       "x-company-id": companyId,
     };
   }
@@ -323,7 +270,9 @@ export default function Gallery({ isAdmin, companyId }: Props) {
             <FilterIcon />
           </button>
 
-          <GridPicker value={gridCols} onChange={handleGridChange} />
+          <div className="hidden sm:block">
+            <GridPicker value={gridCols} onChange={handleGridChange} />
+          </div>
 
           {isAdmin && (
             <button
@@ -423,19 +372,7 @@ export default function Gallery({ isAdmin, companyId }: Props) {
 
       {/* Main grid */}
       <div className="px-5 pb-8">
-        {loading ? (
-          /* Skeleton cards while instanceId resolves — prevents flash of wrong data */
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-[#141414] rounded-2xl overflow-hidden border border-white/5 animate-pulse">
-                <div className="w-full aspect-[4/3] bg-white/5" />
-                <div className="px-3 py-2.5">
-                  <div className="h-3.5 bg-white/10 rounded-full w-3/4" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : viewMode === "all" ? (
+        {viewMode === "all" ? (
           filteredSites.length === 0 ? (
             <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
           ) : (

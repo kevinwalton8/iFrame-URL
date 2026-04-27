@@ -21,33 +21,24 @@ export type Category = {
 
 const SEED_FILE = path.join(process.cwd(), "data", "gallery.json");
 
-type LocalData = {
-  sites: Site[];
-  categories: Category[];
-};
+type LocalData = { sites: Site[]; categories: Category[] };
 
-function tmpFile(id: string) {
-  return `/tmp/gallery-${id}.json`;
+function tmpFile(companyId: string) {
+  return `/tmp/gallery-${companyId}.json`;
 }
 
-function readLocal(id?: string): LocalData {
-  const candidates = id && process.env.VERCEL
-    ? [tmpFile(id), SEED_FILE]
+function readLocal(companyId?: string): LocalData {
+  const candidates = companyId && process.env.VERCEL
+    ? [tmpFile(companyId), SEED_FILE]
     : [SEED_FILE];
-
   for (const file of candidates) {
-    try {
-      const raw = fs.readFileSync(file, "utf-8");
-      return JSON.parse(raw);
-    } catch {
-      // continue
-    }
+    try { return JSON.parse(fs.readFileSync(file, "utf-8")); } catch { /* next */ }
   }
   return { sites: [], categories: [] };
 }
 
-function writeLocal(data: LocalData, id?: string) {
-  const file = id && process.env.VERCEL ? tmpFile(id) : SEED_FILE;
+function writeLocal(data: LocalData, companyId?: string) {
+  const file = companyId && process.env.VERCEL ? tmpFile(companyId) : SEED_FILE;
   const dir = path.dirname(file);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
@@ -58,116 +49,60 @@ const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 export const useKV = !!(KV_URL && KV_TOKEN);
 
 if (process.env.VERCEL && !useKV) {
-  console.warn(
-    "[db] WARNING: Running on Vercel WITHOUT Vercel KV. " +
-    "Data is stored in /tmp and will be lost on every redeploy. " +
-    "Connect an Upstash KV store in your Vercel project settings."
-  );
+  console.warn("[db] WARNING: Running on Vercel WITHOUT KV. Data stored in /tmp will be lost on redeploy.");
 }
 
-function kvKey(base: string, id?: string) {
-  return id ? `${base}:${id}` : base;
+function kvKey(base: string, companyId?: string) {
+  return companyId ? `${base}:${companyId}` : base;
 }
 
-// --- Sites ---
-
-// instanceId  = the per-experience key (exp_XXX) — isolated per gallery install
-// companyId   = the legacy / fallback company key (biz_XXX)
-//
-// Migration rule: if instanceId has no data but companyId does, copy it over
-// once so existing sites appear in the new instance. After the first write,
-// instanceId has its own data and no longer falls back.
-
-export async function getSites(instanceId?: string, companyId?: string): Promise<Site[]> {
+export async function getSites(companyId?: string): Promise<Site[]> {
   if (useKV) {
-    try {
-      const sites = await kv.get<Site[]>(kvKey("sites", instanceId));
-      if (sites && sites.length > 0) return sites;
-
-      // One-time migration: seed from company-level key if available
-      if (companyId && companyId !== instanceId) {
-        const fallback = await kv.get<Site[]>(kvKey("sites", companyId));
-        if (fallback && fallback.length > 0) {
-          // Save under instanceId so future reads are fast
-          await kv.set(kvKey("sites", instanceId), fallback);
-          return fallback;
-        }
-      }
-
-      return [];
-    } catch (err) {
-      console.error("[db] KV getSites error:", err);
-      throw err;
-    }
+    try { return (await kv.get<Site[]>(kvKey("sites", companyId))) ?? []; }
+    catch (err) { console.error("[db] KV getSites error:", err); throw err; }
   }
-  return readLocal(instanceId ?? companyId).sites;
+  return readLocal(companyId).sites;
 }
 
 export async function updateSite(
   id: string,
   patch: Partial<Omit<Site, "id" | "createdAt">>,
-  instanceId?: string,
   companyId?: string
 ): Promise<Site | null> {
-  const sites = await getSites(instanceId, companyId);
+  const sites = await getSites(companyId);
   const idx = sites.findIndex((s) => s.id === id);
   if (idx === -1) return null;
   sites[idx] = { ...sites[idx], ...patch };
-  await saveSites(sites, instanceId);
+  await saveSites(sites, companyId);
   return sites[idx];
 }
 
-export async function saveSites(sites: Site[], instanceId?: string): Promise<void> {
+export async function saveSites(sites: Site[], companyId?: string): Promise<void> {
   if (useKV) {
-    try {
-      await kv.set(kvKey("sites", instanceId), sites);
-    } catch (err) {
-      console.error("[db] KV saveSites error:", err);
-      throw err;
-    }
+    try { await kv.set(kvKey("sites", companyId), sites); }
+    catch (err) { console.error("[db] KV saveSites error:", err); throw err; }
     return;
   }
-  const data = readLocal(instanceId);
+  const data = readLocal(companyId);
   data.sites = sites;
-  writeLocal(data, instanceId);
+  writeLocal(data, companyId);
 }
 
-// --- Categories ---
-
-export async function getCategories(instanceId?: string, companyId?: string): Promise<Category[]> {
+export async function getCategories(companyId?: string): Promise<Category[]> {
   if (useKV) {
-    try {
-      const cats = await kv.get<Category[]>(kvKey("categories", instanceId));
-      if (cats && cats.length > 0) return cats;
-
-      if (companyId && companyId !== instanceId) {
-        const fallback = await kv.get<Category[]>(kvKey("categories", companyId));
-        if (fallback && fallback.length > 0) {
-          await kv.set(kvKey("categories", instanceId), fallback);
-          return fallback;
-        }
-      }
-
-      return [];
-    } catch (err) {
-      console.error("[db] KV getCategories error:", err);
-      throw err;
-    }
+    try { return (await kv.get<Category[]>(kvKey("categories", companyId))) ?? []; }
+    catch (err) { console.error("[db] KV getCategories error:", err); throw err; }
   }
-  return readLocal(instanceId ?? companyId).categories;
+  return readLocal(companyId).categories;
 }
 
-export async function saveCategories(categories: Category[], instanceId?: string): Promise<void> {
+export async function saveCategories(categories: Category[], companyId?: string): Promise<void> {
   if (useKV) {
-    try {
-      await kv.set(kvKey("categories", instanceId), categories);
-    } catch (err) {
-      console.error("[db] KV saveCategories error:", err);
-      throw err;
-    }
+    try { await kv.set(kvKey("categories", companyId), categories); }
+    catch (err) { console.error("[db] KV saveCategories error:", err); throw err; }
     return;
   }
-  const data = readLocal(instanceId);
+  const data = readLocal(companyId);
   data.categories = categories;
-  writeLocal(data, instanceId);
+  writeLocal(data, companyId);
 }

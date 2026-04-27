@@ -5,53 +5,33 @@ import { headers } from "next/headers";
 
 const FALLBACK_COMPANY_ID = process.env.WHOP_COMPANY_ID ?? "";
 
-// Storage key: prefer the per-instance experienceId so duplicate installs
-// each get their own isolated data.
-function getInstanceId(req: NextRequest): string {
-  return (
-    req.headers.get("x-instance-id") ||
-    req.headers.get("x-company-id") ||
-    FALLBACK_COMPANY_ID
-  );
-}
-
-// Auth ALWAYS uses the company ID — never the experienceId.
-// authorizedUserOn() requires a biz_XXX value, not exp_XXX.
-function getCompanyIdForAuth(req: NextRequest): string {
+function getCompanyId(req: NextRequest): string {
   return req.headers.get("x-company-id") || FALLBACK_COMPANY_ID;
 }
 
 async function checkAdmin(_req: NextRequest): Promise<boolean> {
   if (process.env.DEV_ADMIN === "true") return true;
-  const companyId = getCompanyIdForAuth(_req);
+  const companyId = getCompanyId(_req);
   if (!companyId) return false;
   try {
-    return await hasAccess({
-      to: authorizedUserOn(companyId),
-      headers: await headers(),
-    });
+    return await hasAccess({ to: authorizedUserOn(companyId), headers: await headers() });
   } catch {
     return false;
   }
 }
 
 export async function GET(req: NextRequest) {
-  const instanceId = getInstanceId(req);
-  const companyId = getCompanyIdForAuth(req);
-  // Pass companyId as migration fallback: if instanceId has no data yet,
-  // db will seed it from the company-level key (one-time migration).
-  const sites = await getSites(instanceId, companyId);
+  const companyId = getCompanyId(req);
+  const sites = await getSites(companyId);
   return NextResponse.json(sites);
 }
 
 export async function POST(req: NextRequest) {
   const isAdmin = await checkAdmin(req);
   if (!isAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-
-  const instanceId = getInstanceId(req);
-  const companyId = getCompanyIdForAuth(req);
+  const companyId = getCompanyId(req);
   const body = await req.json();
-  const sites = await getSites(instanceId, companyId);
+  const sites = await getSites(companyId);
   const newSite: Site = {
     id: crypto.randomUUID(),
     title: body.title,
@@ -63,19 +43,17 @@ export async function POST(req: NextRequest) {
     createdAt: new Date().toISOString(),
   };
   sites.push(newSite);
-  await saveSites(sites, instanceId);
+  await saveSites(sites, companyId);
   return NextResponse.json(newSite, { status: 201 });
 }
 
 export async function PUT(req: NextRequest) {
   const isAdmin = await checkAdmin(req);
   if (!isAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-
-  const instanceId = getInstanceId(req);
-  const companyId = getCompanyIdForAuth(req);
+  const companyId = getCompanyId(req);
   const { id, ...patch } = await req.json();
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  const updated = await updateSite(id, patch, instanceId, companyId);
+  const updated = await updateSite(id, patch, companyId);
   if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(updated);
 }
@@ -83,12 +61,10 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const isAdmin = await checkAdmin(req);
   if (!isAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-
-  const instanceId = getInstanceId(req);
-  const companyId = getCompanyIdForAuth(req);
+  const companyId = getCompanyId(req);
   const { id } = await req.json();
-  const sites = await getSites(instanceId, companyId);
+  const sites = await getSites(companyId);
   const updated = sites.filter((s) => s.id !== id);
-  await saveSites(updated, instanceId);
+  await saveSites(updated, companyId);
   return NextResponse.json({ ok: true });
 }
