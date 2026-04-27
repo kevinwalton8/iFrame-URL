@@ -47,13 +47,15 @@ export default function Gallery({ isAdmin, companyId }: Props) {
     async function resolveInstance() {
       let expId = companyId; // fallback
 
-      // Try to get the per-instance experienceId from the Whop iframe SDK
+      // Try to get the per-instance experienceId from the Whop iframe SDK.
+      // Race against a 2.5s timeout so a non-responsive parent never blocks loading.
       if (typeof window !== "undefined" && window.parent !== window) {
         try {
           const { createAppIframeSDK } = await import("@whop-apps/sdk");
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const sdk = createAppIframeSDK({ onMessage: {} as any });
-          const urlData = await sdk.getTopLevelUrlData({});
+          const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+          const urlData = await Promise.race([sdk.getTopLevelUrlData({}), timeout]);
           if (urlData?.experienceId) expId = urlData.experienceId;
         } catch {
           // SDK unavailable — stay on companyId
