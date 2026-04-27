@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import type { Site, Category } from "@/lib/db";
 import SiteCard from "./SiteCard";
 import AddSiteModal from "./AddSiteModal";
@@ -10,15 +10,17 @@ import GridPicker from "./GridPicker";
 import BulkActionBar from "./BulkActionBar";
 
 type Props = {
-  initialSites: Site[];
-  initialCategories: Category[];
   isAdmin: boolean;
   companyId: string;
 };
 
-export default function Gallery({ initialSites, initialCategories, isAdmin, companyId }: Props) {
-  const [sites, setSites] = useState<Site[]>(initialSites);
-  const [categories, setCategories] = useState<Category[]>(initialCategories);
+const SESSION_KEY = "whop_instance_id";
+
+export default function Gallery({ isAdmin, companyId }: Props) {
+  const [sites, setSites] = useState<Site[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [instanceId, setInstanceId] = useState<string | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [viewMode, setViewMode] = useState<"all" | "category">("all");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -44,7 +46,93 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const resolvedOnce = useRef(false);
 
+  // ─── Resolve which KV namespace to use ───────────────────────────────────
+  useEffect(() => {
+    if (resolvedOnce.current) return;
+    resolvedOnce.current = true;
+
+    async function resolve() {
+      // 1. sessionStorage cache — instant on any page reload within the same tab/WebView
+      try {
+        const cached = sessionStorage.getItem(SESSION_KEY);
+        if (cached) {
+          setInstanceId(cached);
+          return;
+        }
+      } catch {
+        // sessionStorage unavailable (private browsing, etc.)
+      }
+
+      // 2. Not embedded in an iframe (local dev, direct URL) — use companyId
+      if (typeof window === "undefined" || window.parent === window) {
+        setInstanceId(companyId);
+        return;
+      }
+
+      // 3. Embedded: ask Whop for the experienceId via postMessage.
+      //    The SDK handles web postMessage, iOS Swift bridge, and React Native bridge.
+      //    We give it 8 seconds — plenty for the native bridge to initialise on mobile.
+      try {
+        const { createAppIframeSDK } = await import("@whop-apps/sdk");
+        const sdk = createAppIframeSDK({});
+
+        const result = await Promise.race([
+          sdk.getTopLevelUrlData({}),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("timeout")), 8000)
+          ),
+        ]);
+
+        const expId = result.experienceId;
+        try {
+          sessionStorage.setItem(SESSION_KEY, expId);
+        } catch {}
+        setInstanceId(expId);
+      } catch (err) {
+        console.warn("[Gallery] Could not resolve experienceId, falling back to companyId:", err);
+        setInstanceId(companyId);
+      }
+    }
+
+    resolve();
+  }, [companyId]);
+
+  // ─── Fetch data once we know which instance we are ───────────────────────
+  useEffect(() => {
+    if (!instanceId) return;
+
+    let cancelled = false;
+    setDataLoading(true);
+
+    async function fetchData() {
+      try {
+        const h = {
+          "Content-Type": "application/json",
+          "x-company-id": companyId,
+          "x-instance-id": instanceId!,
+        };
+        const [sitesRes, catsRes] = await Promise.all([
+          fetch("/api/sites", { headers: h }),
+          fetch("/api/categories", { headers: h }),
+        ]);
+        if (!cancelled) {
+          setSites(await sitesRes.json());
+          setCategories(await catsRes.json());
+        }
+      } catch (err) {
+        console.error("[Gallery] fetchData error:", err);
+      } finally {
+        if (!cancelled) setDataLoading(false);
+      }
+    }
+
+    fetchData();
+    return () => { cancelled = true; };
+  }, [instanceId, companyId]);
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -61,19 +149,20 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     setSelectedIds(new Set());
   }
 
-  // Clear selection when leaving edit mode
   function handleSetEditMode(val: boolean) {
     setEditMode(val);
     if (!val) clearSelection();
   }
 
-  function apiHeaders() {
+  function apiHeaders(): Record<string, string> {
     return {
       "Content-Type": "application/json",
       "x-company-id": companyId,
+      "x-instance-id": instanceId ?? companyId,
     };
   }
 
+  // ─── Filtered / grouped data ──────────────────────────────────────────────
   const filteredSites = useMemo(() => {
     if (!searchQuery.trim()) return sites;
     const q = searchQuery.toLowerCase();
@@ -98,6 +187,15 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
 
   const activeCategoryNames = useMemo(() => Array.from(sitesByCategory.keys()), [sitesByCategory]);
 
+  const categoryEntries = useMemo(() => {
+    if (selectedCategory) {
+      const s = sitesByCategory.get(selectedCategory);
+      return s ? [[selectedCategory, s] as [string, Site[]]] : [];
+    }
+    return Array.from(sitesByCategory.entries());
+  }, [sitesByCategory, selectedCategory]);
+
+  // ─── CRUD handlers ────────────────────────────────────────────────────────
   async function handleAddSite(data: Omit<Site, "id" | "createdAt">) {
     const res = await fetch("/api/sites", {
       method: "POST",
@@ -159,6 +257,16 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     );
   }
 
+  async function handleDeleteCategory(id: string) {
+    const res = await fetch("/api/categories", {
+      method: "DELETE",
+      headers: apiHeaders(),
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) return;
+    setCategories((prev) => prev.filter((c) => c.id !== id));
+  }
+
   async function handleBulkDelete() {
     if (!selectedIds.size) return;
     if (!confirm(`Delete ${selectedIds.size} site${selectedIds.size > 1 ? "s" : ""}?`)) return;
@@ -214,16 +322,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     clearSelection();
   }
 
-  async function handleDeleteCategory(id: string) {
-    const res = await fetch("/api/categories", {
-      method: "DELETE",
-      headers: apiHeaders(),
-      body: JSON.stringify({ id }),
-    });
-    if (!res.ok) return;
-    setCategories((prev) => prev.filter((c) => c.id !== id));
-  }
-
+  // ─── Grid ─────────────────────────────────────────────────────────────────
   const gridClass = `grid grid-cols-2 sm:grid-cols-3 ${{
     3: "lg:grid-cols-3",
     4: "lg:grid-cols-4",
@@ -233,14 +332,35 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
     8: "lg:grid-cols-8",
   }[gridCols] ?? "lg:grid-cols-4"} gap-4`;
 
-  const categoryEntries = useMemo(() => {
-    if (selectedCategory) {
-      const sites = sitesByCategory.get(selectedCategory);
-      return sites ? [[selectedCategory, sites] as [string, Site[]]] : [];
-    }
-    return Array.from(sitesByCategory.entries());
-  }, [sitesByCategory, selectedCategory]);
+  // ─── Loading skeleton ─────────────────────────────────────────────────────
+  if (dataLoading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] text-white">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <div className="w-20 h-4 rounded bg-white/10 animate-pulse" />
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse" />
+            <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse" />
+          </div>
+        </div>
+        <div className="flex gap-2 px-5 pb-4">
+          <div className="w-10 h-7 rounded-full bg-white/10 animate-pulse" />
+          <div className="w-24 h-7 rounded-full bg-white/10 animate-pulse" />
+        </div>
+        <div className="px-5 pb-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="aspect-[4/3] rounded-2xl bg-white/5 animate-pulse"
+              style={{ animationDelay: `${i * 60}ms` }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
+  // ─── Full UI ──────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       {/* Header */}
@@ -304,7 +424,6 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
       )}
 
       {editMode && isAdmin && (
-        /* Scrollable single row on mobile — no wrapping, compact pill buttons */
         <div className="flex items-center gap-2 px-5 pb-4 overflow-x-auto scrollbar-none">
           <button
             onClick={() => setShowQuickAdd(true)}
@@ -419,7 +538,7 @@ export default function Gallery({ initialSites, initialCategories, isAdmin, comp
         )}
       </div>
 
-      {/* Bulk action bar — floats above bottom when cards are selected */}
+      {/* Bulk action bar */}
       {editMode && isAdmin && selectedIds.size > 0 && (
         <BulkActionBar
           count={selectedIds.size}

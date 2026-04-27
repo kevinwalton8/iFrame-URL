@@ -1,6 +1,5 @@
 import { headers } from "next/headers";
 import { hasAccess, authorizedUserOn, validateToken } from "@whop-apps/sdk";
-import { getSites, getCategories } from "@/lib/db";
 import Gallery from "@/components/Gallery";
 
 export default async function Home() {
@@ -27,16 +26,10 @@ export default async function Home() {
     }
   }
 
-  // Fetch data server-side so the gallery renders immediately with no loading flash
-  const [sites, categories] = await Promise.all([
-    getSites(companyId),
-    getCategories(companyId),
-  ]);
-
+  // Data is fetched client-side after the experience ID is resolved.
+  // This prevents showing shared data from another duplicated gallery instance.
   return (
     <Gallery
-      initialSites={sites}
-      initialCategories={categories}
       isAdmin={isAdmin}
       companyId={companyId}
     />
