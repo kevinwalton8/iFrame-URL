@@ -38,7 +38,7 @@ export default function Gallery({
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [collections, setCollections] = useState<Collection[]>(initialCollections);
   const [editMode, setEditMode] = useState(false);
-  const [viewMode, setViewMode] = useState<"all" | "category">("all");
+  const [viewMode, setViewMode] = useState<"all" | "category">("category");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
