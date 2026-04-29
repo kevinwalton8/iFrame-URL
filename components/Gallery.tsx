@@ -9,6 +9,8 @@ import ManageCategoriesModal from "./ManageCategoriesModal";
 import CollectionsManagerModal from "./CollectionsManagerModal";
 import GridPicker from "./GridPicker";
 import BulkActionBar from "./BulkActionBar";
+import SortMenu from "./SortMenu";
+import { sortSites, isValidSortMode, type SortMode } from "@/lib/site-utils";
 
 type Props = {
   initialSites: Site[];
@@ -51,6 +53,19 @@ export default function Gallery({
   function handleGridChange(cols: number) {
     setGridCols(cols);
     if (typeof window !== "undefined") localStorage.setItem("gallery-grid-cols", String(cols));
+  }
+
+  const [sortMode, setSortMode] = useState<SortMode>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("gallery-sort-mode");
+      if (isValidSortMode(saved)) return saved;
+    }
+    return "newest";
+  });
+
+  function handleSortChange(mode: SortMode) {
+    setSortMode(mode);
+    if (typeof window !== "undefined") localStorage.setItem("gallery-sort-mode", mode);
   }
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -97,7 +112,7 @@ export default function Gallery({
     [currentCollectionId]
   );
 
-  const filteredSites = useMemo(() => {
+  const searchedSites = useMemo(() => {
     if (!searchQuery.trim()) return sites;
     const q = searchQuery.toLowerCase();
     return sites.filter(
@@ -108,6 +123,12 @@ export default function Gallery({
         s.category.toLowerCase().includes(q)
     );
   }, [sites, searchQuery]);
+
+  // Apply sort (and the "NEW only" filter, which is part of sortSites)
+  const filteredSites = useMemo(
+    () => sortSites(searchedSites, sortMode),
+    [searchedSites, sortMode]
+  );
 
   const sitesByCategory = useMemo(() => {
     const map = new Map<string, Site[]>();
@@ -407,6 +428,8 @@ export default function Gallery({
           >
             <SearchIcon />
           </button>
+
+          <SortMenu value={sortMode} onChange={handleSortChange} />
 
           <button
             className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Site } from "@/lib/db";
+import { isNewSite } from "@/lib/site-utils";
 
 type Props = {
   site: Site;
@@ -15,6 +16,7 @@ type Props = {
 export default function SiteCard({ site, editMode, selected = false, onSelect, onDelete, onEdit }: Props) {
   const [imgError, setImgError] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const showNewBadge = isNewSite(site);
 
   function handleCardClick(e: React.MouseEvent) {
     if (editMode) {
@@ -95,6 +97,15 @@ export default function SiteCard({ site, editMode, selected = false, onSelect, o
         {/* Selected overlay tint */}
         {editMode && selected && (
           <div className="absolute inset-0 bg-white/10 pointer-events-none" />
+        )}
+
+        {/* NEW badge — auto-shows for sites added in the last 30 days */}
+        {showNewBadge && (
+          <div className="absolute top-2 right-2 z-10 pointer-events-none select-none">
+            <span className="inline-block bg-yellow-300 text-black text-[10px] font-extrabold tracking-wider px-1.5 py-0.5 rounded shadow-lg shadow-black/50 ring-1 ring-black/10">
+              NEW
+            </span>
+          </div>
         )}
       </div>
 
