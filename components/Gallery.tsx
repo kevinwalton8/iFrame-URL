@@ -1,26 +1,39 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
-import type { Site, Category } from "@/lib/db";
+import { useState, useMemo } from "react";
+import type { Site, Category, Collection } from "@/lib/db";
 import SiteCard from "./SiteCard";
 import AddSiteModal from "./AddSiteModal";
 import QuickAddModal from "./QuickAddModal";
 import ManageCategoriesModal from "./ManageCategoriesModal";
+import CollectionsManagerModal from "./CollectionsManagerModal";
 import GridPicker from "./GridPicker";
 import BulkActionBar from "./BulkActionBar";
 
 type Props = {
+  initialSites: Site[];
+  initialCategories: Category[];
+  initialCollections: Collection[];
+  collectionId: string;
+  collectionName: string;
   isAdmin: boolean;
   companyId: string;
+  notFound?: boolean;
 };
 
-const SESSION_KEY = "whop_instance_id";
-
-export default function Gallery({ isAdmin, companyId }: Props) {
-  const [sites, setSites] = useState<Site[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [instanceId, setInstanceId] = useState<string | null>(null);
-  const [dataLoading, setDataLoading] = useState(true);
+export default function Gallery({
+  initialSites,
+  initialCategories,
+  initialCollections,
+  collectionId,
+  collectionName,
+  isAdmin,
+  companyId,
+  notFound = false,
+}: Props) {
+  const [sites, setSites] = useState<Site[]>(initialSites);
+  const [categories, setCategories] = useState<Category[]>(initialCategories);
+  const [collections, setCollections] = useState<Collection[]>(initialCollections);
   const [editMode, setEditMode] = useState(false);
   const [viewMode, setViewMode] = useState<"all" | "category">("all");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -43,96 +56,11 @@ export default function Gallery({ isAdmin, companyId }: Props) {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [showManageCategories, setShowManageCategories] = useState(false);
+  const [showCollections, setShowCollections] = useState(false);
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const resolvedOnce = useRef(false);
 
-  // ─── Resolve which KV namespace to use ───────────────────────────────────
-  useEffect(() => {
-    if (resolvedOnce.current) return;
-    resolvedOnce.current = true;
-
-    async function resolve() {
-      // 1. sessionStorage cache — instant on any page reload within the same tab/WebView
-      try {
-        const cached = sessionStorage.getItem(SESSION_KEY);
-        if (cached) {
-          setInstanceId(cached);
-          return;
-        }
-      } catch {
-        // sessionStorage unavailable (private browsing, etc.)
-      }
-
-      // 2. Not embedded in an iframe (local dev, direct URL) — use companyId
-      if (typeof window === "undefined" || window.parent === window) {
-        setInstanceId(companyId);
-        return;
-      }
-
-      // 3. Embedded: ask Whop for the experienceId via postMessage.
-      //    The SDK handles web postMessage, iOS Swift bridge, and React Native bridge.
-      //    We give it 8 seconds — plenty for the native bridge to initialise on mobile.
-      try {
-        const { createAppIframeSDK } = await import("@whop-apps/sdk");
-        const sdk = createAppIframeSDK({});
-
-        const result = await Promise.race([
-          sdk.getTopLevelUrlData({}),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("timeout")), 8000)
-          ),
-        ]);
-
-        const expId = result.experienceId;
-        try {
-          sessionStorage.setItem(SESSION_KEY, expId);
-        } catch {}
-        setInstanceId(expId);
-      } catch (err) {
-        console.warn("[Gallery] Could not resolve experienceId, falling back to companyId:", err);
-        setInstanceId(companyId);
-      }
-    }
-
-    resolve();
-  }, [companyId]);
-
-  // ─── Fetch data once we know which instance we are ───────────────────────
-  useEffect(() => {
-    if (!instanceId) return;
-
-    let cancelled = false;
-    setDataLoading(true);
-
-    async function fetchData() {
-      try {
-        const h = {
-          "Content-Type": "application/json",
-          "x-company-id": companyId,
-          "x-instance-id": instanceId!,
-        };
-        const [sitesRes, catsRes] = await Promise.all([
-          fetch("/api/sites", { headers: h }),
-          fetch("/api/categories", { headers: h }),
-        ]);
-        if (!cancelled) {
-          setSites(await sitesRes.json());
-          setCategories(await catsRes.json());
-        }
-      } catch (err) {
-        console.error("[Gallery] fetchData error:", err);
-      } finally {
-        if (!cancelled) setDataLoading(false);
-      }
-    }
-
-    fetchData();
-    return () => { cancelled = true; };
-  }, [instanceId, companyId]);
-
-  // ─── Helpers ─────────────────────────────────────────────────────────────
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -158,11 +86,18 @@ export default function Gallery({ isAdmin, companyId }: Props) {
     return {
       "Content-Type": "application/json",
       "x-company-id": companyId,
-      "x-instance-id": instanceId ?? companyId,
+      "x-collection-id": collectionId,
     };
   }
 
-  // ─── Filtered / grouped data ──────────────────────────────────────────────
+  /** Headers for company-scoped requests (collections list) — collection-id is irrelevant. */
+  function companyHeaders(): Record<string, string> {
+    return {
+      "Content-Type": "application/json",
+      "x-company-id": companyId,
+    };
+  }
+
   const filteredSites = useMemo(() => {
     if (!searchQuery.trim()) return sites;
     const q = searchQuery.toLowerCase();
@@ -195,7 +130,7 @@ export default function Gallery({ isAdmin, companyId }: Props) {
     return Array.from(sitesByCategory.entries());
   }, [sitesByCategory, selectedCategory]);
 
-  // ─── CRUD handlers ────────────────────────────────────────────────────────
+  // ─── Site CRUD ────────────────────────────────────────────────────────────
   async function handleAddSite(data: Omit<Site, "id" | "createdAt">) {
     const res = await fetch("/api/sites", {
       method: "POST",
@@ -299,7 +234,6 @@ export default function Gallery({ isAdmin, companyId }: Props) {
   }
 
   async function handleBulkAddTag(tag: string) {
-    const ids = Array.from(selectedIds);
     const updates = sites.filter((s) => selectedIds.has(s.id)).map((s) => ({
       id: s.id,
       tags: s.tags.includes(tag) ? s.tags : [...s.tags, tag],
@@ -322,7 +256,45 @@ export default function Gallery({ isAdmin, companyId }: Props) {
     clearSelection();
   }
 
-  // ─── Grid ─────────────────────────────────────────────────────────────────
+  // ─── Collections CRUD ─────────────────────────────────────────────────────
+  async function handleCreateCollection(name: string): Promise<Collection | null> {
+    const res = await fetch("/api/collections", {
+      method: "POST",
+      headers: companyHeaders(),
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) return null;
+    const created: Collection = await res.json();
+    setCollections((prev) => [...prev, created]);
+    return created;
+  }
+
+  async function handleRenameCollection(id: string, name: string) {
+    const res = await fetch("/api/collections", {
+      method: "PUT",
+      headers: companyHeaders(),
+      body: JSON.stringify({ id, name }),
+    });
+    if (!res.ok) return;
+    const updated: Collection = await res.json();
+    setCollections((prev) => prev.map((c) => (c.id === id ? updated : c)));
+  }
+
+  async function handleDeleteCollection(id: string) {
+    const res = await fetch("/api/collections", {
+      method: "DELETE",
+      headers: companyHeaders(),
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) return;
+    setCollections((prev) => prev.filter((c) => c.id !== id));
+    // If they just deleted the collection they're viewing, send them home
+    if (id === collectionId) {
+      window.location.href = "/";
+    }
+  }
+
+  // ─── Layout ───────────────────────────────────────────────────────────────
   const gridClass = `grid grid-cols-2 sm:grid-cols-3 ${{
     3: "lg:grid-cols-3",
     4: "lg:grid-cols-4",
@@ -332,46 +304,42 @@ export default function Gallery({ isAdmin, companyId }: Props) {
     8: "lg:grid-cols-8",
   }[gridCols] ?? "lg:grid-cols-4"} gap-4`;
 
-  // ─── Loading skeleton ─────────────────────────────────────────────────────
-  if (dataLoading) {
+  // Not-found state for /c/[id] when the collection doesn't exist
+  if (notFound) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white">
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <div className="w-20 h-4 rounded bg-white/10 animate-pulse" />
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse" />
-            <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse" />
-          </div>
+      <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center px-5 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-3xl mb-4">
+          🤷
         </div>
-        <div className="flex gap-2 px-5 pb-4">
-          <div className="w-10 h-7 rounded-full bg-white/10 animate-pulse" />
-          <div className="w-24 h-7 rounded-full bg-white/10 animate-pulse" />
-        </div>
-        <div className="px-5 pb-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={i}
-              className="aspect-[4/3] rounded-2xl bg-white/5 animate-pulse"
-              style={{ animationDelay: `${i * 60}ms` }}
-            />
-          ))}
-        </div>
+        <h1 className="text-lg font-semibold mb-1">Collection not found</h1>
+        <p className="text-sm text-white/50 max-w-sm">
+          This collection doesn&apos;t exist (or has been deleted).
+          {isAdmin && " Open the Default gallery and create it from Settings → Collections."}
+        </p>
+        <a
+          href="/"
+          className="mt-6 px-4 py-2 bg-white text-black rounded-xl text-sm font-medium hover:bg-white/90 transition-colors"
+        >
+          Go to Default
+        </a>
       </div>
     );
   }
 
-  // ─── Full UI ──────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-5 pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-md bg-white/10 flex items-center justify-center text-xs">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 rounded-md bg-white/10 flex items-center justify-center text-xs flex-shrink-0">
             🔗
           </div>
-          <span className="text-sm font-medium text-white/70">
-            {sites.length} {sites.length === 1 ? "site" : "sites"}
-          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-white truncate">{collectionName}</div>
+            <div className="text-[11px] text-white/40">
+              {sites.length} {sites.length === 1 ? "site" : "sites"}
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -445,6 +413,16 @@ export default function Gallery({ isAdmin, companyId }: Props) {
           >
             <FolderIcon />
             Categories
+          </button>
+          <button
+            onClick={() => setShowCollections(true)}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white/10 text-white rounded-xl text-xs font-medium hover:bg-white/20 transition-colors"
+          >
+            <CollectionsIcon />
+            Collections
+            <span className="ml-0.5 text-[10px] bg-white/15 px-1.5 py-0.5 rounded-full">
+              {collections.length + 1}
+            </span>
           </button>
         </div>
       )}
@@ -604,6 +582,17 @@ export default function Gallery({ isAdmin, companyId }: Props) {
           onClose={() => setShowManageCategories(false)}
         />
       )}
+
+      {showCollections && (
+        <CollectionsManagerModal
+          collections={collections}
+          currentCollectionId={collectionId}
+          onCreate={handleCreateCollection}
+          onRename={handleRenameCollection}
+          onDelete={handleDeleteCollection}
+          onClose={() => setShowCollections(false)}
+        />
+      )}
     </div>
   );
 }
@@ -672,6 +661,16 @@ function BoltIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
       <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+    </svg>
+  );
+}
+function CollectionsIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
     </svg>
   );
 }

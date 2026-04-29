@@ -3,7 +3,12 @@ import { hasAccess, authorizedUserOn, validateToken } from "@whop-apps/sdk";
 import { getSites, getCategories, getCollections, DEFAULT_COLLECTION_ID } from "@/lib/db";
 import Gallery from "@/components/Gallery";
 
-export default async function Home() {
+type PageProps = {
+  params: Promise<{ id: string }>;
+};
+
+export default async function CollectionPage({ params }: PageProps) {
+  const { id } = await params;
   const hdrs = await headers();
 
   let companyId = process.env.WHOP_COMPANY_ID ?? "";
@@ -27,22 +32,35 @@ export default async function Home() {
     }
   }
 
-  // Fetch the Default collection's data + the list of all collections
-  const [sites, categories, collections] = await Promise.all([
-    getSites(companyId, DEFAULT_COLLECTION_ID),
-    getCategories(companyId, DEFAULT_COLLECTION_ID),
-    getCollections(companyId),
-  ]);
+  const collections = await getCollections(companyId);
+
+  // Resolve the collection by id. The "default" id always exists.
+  let collectionName = "Default";
+  let exists = id === DEFAULT_COLLECTION_ID;
+  if (!exists) {
+    const coll = collections.find((c) => c.id === id);
+    if (coll) {
+      collectionName = coll.name;
+      exists = true;
+    } else {
+      collectionName = "Collection not found";
+    }
+  }
+
+  const [sites, categories] = exists
+    ? await Promise.all([getSites(companyId, id), getCategories(companyId, id)])
+    : [[], []];
 
   return (
     <Gallery
       initialSites={sites}
       initialCategories={categories}
       initialCollections={collections}
-      collectionId={DEFAULT_COLLECTION_ID}
-      collectionName="Default"
+      collectionId={id}
+      collectionName={collectionName}
       isAdmin={isAdmin}
       companyId={companyId}
+      notFound={!exists}
     />
   );
 }

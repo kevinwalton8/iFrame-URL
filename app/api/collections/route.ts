@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCategories, saveCategories, type Category } from "@/lib/db";
+import { getCollections, saveCollections, deleteCollectionData, type Collection } from "@/lib/db";
 import { hasAccess, authorizedUserOn } from "@whop-apps/sdk";
 import { headers } from "next/headers";
 
@@ -7,10 +7,6 @@ const FALLBACK_COMPANY_ID = process.env.WHOP_COMPANY_ID ?? "";
 
 function getCompanyId(req: NextRequest): string {
   return req.headers.get("x-company-id") || FALLBACK_COMPANY_ID;
-}
-
-function getCollectionId(req: NextRequest): string {
-  return req.headers.get("x-collection-id") || "default";
 }
 
 async function checkAdmin(_req: NextRequest): Promise<boolean> {
@@ -24,55 +20,72 @@ async function checkAdmin(_req: NextRequest): Promise<boolean> {
   }
 }
 
+function slugify(name: string): string {
+  return name.toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32) || "untitled";
+}
+
 export async function GET(req: NextRequest) {
   const companyId = getCompanyId(req);
-  const collectionId = getCollectionId(req);
-  const categories = await getCategories(companyId, collectionId);
-  return NextResponse.json(categories);
+  const collections = await getCollections(companyId);
+  return NextResponse.json(collections);
 }
 
 export async function POST(req: NextRequest) {
   const isAdmin = await checkAdmin(req);
   if (!isAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   const companyId = getCompanyId(req);
-  const collectionId = getCollectionId(req);
   const { name } = await req.json();
-  const categories = await getCategories(companyId, collectionId);
-  if (categories.find((c) => c.name.toLowerCase() === name.toLowerCase())) {
-    return NextResponse.json({ error: "Category already exists" }, { status: 409 });
+  if (!name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 });
+
+  const collections = await getCollections(companyId);
+  const baseSlug = slugify(name);
+
+  // The id "default" is reserved for the legacy/default bucket.
+  let id = baseSlug === "default" ? "default-2" : baseSlug;
+  let suffix = 1;
+  while (collections.find((c) => c.id === id)) {
+    suffix++;
+    id = `${baseSlug}-${suffix}`;
   }
-  const newCat: Category = {
-    id: crypto.randomUUID(),
-    name,
+
+  const newCollection: Collection = {
+    id,
+    name: name.trim(),
     createdAt: new Date().toISOString(),
   };
-  categories.push(newCat);
-  await saveCategories(categories, companyId, collectionId);
-  return NextResponse.json(newCat, { status: 201 });
+  collections.push(newCollection);
+  await saveCollections(collections, companyId);
+  return NextResponse.json(newCollection, { status: 201 });
 }
 
 export async function PUT(req: NextRequest) {
   const isAdmin = await checkAdmin(req);
   if (!isAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   const companyId = getCompanyId(req);
-  const collectionId = getCollectionId(req);
   const { id, name } = await req.json();
-  const categories = await getCategories(companyId, collectionId);
-  const idx = categories.findIndex((c) => c.id === id);
+  if (!name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 });
+  const collections = await getCollections(companyId);
+  const idx = collections.findIndex((c) => c.id === id);
   if (idx === -1) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  categories[idx].name = name;
-  await saveCategories(categories, companyId, collectionId);
-  return NextResponse.json(categories[idx]);
+  collections[idx].name = name.trim();
+  await saveCollections(collections, companyId);
+  return NextResponse.json(collections[idx]);
 }
 
 export async function DELETE(req: NextRequest) {
   const isAdmin = await checkAdmin(req);
   if (!isAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   const companyId = getCompanyId(req);
-  const collectionId = getCollectionId(req);
   const { id } = await req.json();
-  const categories = await getCategories(companyId, collectionId);
-  const updated = categories.filter((c) => c.id !== id);
-  await saveCategories(updated, companyId, collectionId);
+  if (id === "default") {
+    return NextResponse.json({ error: "The Default collection cannot be deleted" }, { status: 400 });
+  }
+  const collections = await getCollections(companyId);
+  const updated = collections.filter((c) => c.id !== id);
+  await saveCollections(updated, companyId);
+  await deleteCollectionData(companyId, id);
   return NextResponse.json({ ok: true });
 }
