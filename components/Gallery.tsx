@@ -47,7 +47,7 @@ export default function Gallery({
       const saved = localStorage.getItem("gallery-grid-cols");
       if (saved) return Number(saved);
     }
-    return 4;
+    return 6;
   });
 
   function handleGridChange(cols: number) {

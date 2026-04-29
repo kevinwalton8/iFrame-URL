@@ -102,7 +102,7 @@ export default function SiteCard({ site, editMode, selected = false, onSelect, o
         {/* NEW badge — auto-shows for sites added in the last 30 days */}
         {showNewBadge && (
           <div className="absolute top-2 right-2 z-10 pointer-events-none select-none">
-            <span className="inline-block bg-yellow-300 text-black text-[10px] font-extrabold tracking-wider px-1.5 py-0.5 rounded shadow-lg shadow-black/50 ring-1 ring-black/10">
+            <span className="inline-block text-white text-[10px] font-extrabold tracking-tight px-1.5 py-0.5 rounded-full shadow-lg shadow-black/50" style={{backgroundColor: '#0019FF'}}>
               NEW
             </span>
           </div>

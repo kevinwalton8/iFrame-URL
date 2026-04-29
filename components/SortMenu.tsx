@@ -66,9 +66,9 @@ export default function SortMenu({ value, onChange }: Props) {
                 <span className="flex flex-col">
                   <span className="flex items-center gap-1.5">
                     {o.mode === "new-only" && (
-                      <span className={`text-[9px] font-extrabold tracking-wider px-1 py-px rounded ${
-                        selected ? "bg-black text-yellow-300" : "bg-yellow-300 text-black"
-                      }`}>
+                      <span className={`text-[9px] font-extrabold tracking-tight px-1 py-px rounded-full ${
+                        selected ? "bg-black text-white" : "text-white"
+                      }`} style={!selected ? {backgroundColor: '#0019FF'} : {}}>
                         NEW
                       </span>
                     )}
