@@ -14,8 +14,9 @@ type Props = {
   initialSites: Site[];
   initialCategories: Category[];
   initialCollections: Collection[];
-  collectionId: string;
-  collectionName: string;
+  /** null = master view (all sites). A collection id = filtered view. */
+  currentCollectionId: string | null;
+  currentCollectionName: string;
   isAdmin: boolean;
   companyId: string;
   notFound?: boolean;
@@ -25,8 +26,8 @@ export default function Gallery({
   initialSites,
   initialCategories,
   initialCollections,
-  collectionId,
-  collectionName,
+  currentCollectionId,
+  currentCollectionName,
   isAdmin,
   companyId,
   notFound = false,
@@ -86,17 +87,15 @@ export default function Gallery({
     return {
       "Content-Type": "application/json",
       "x-company-id": companyId,
-      "x-collection-id": collectionId,
     };
   }
 
-  /** Headers for company-scoped requests (collections list) — collection-id is irrelevant. */
-  function companyHeaders(): Record<string, string> {
-    return {
-      "Content-Type": "application/json",
-      "x-company-id": companyId,
-    };
-  }
+  // Pre-selected collection IDs when admin opens the Add/Quick-Add modals
+  // while viewing a specific collection page.
+  const defaultCollectionIds = useMemo(
+    () => (currentCollectionId ? [currentCollectionId] : []),
+    [currentCollectionId]
+  );
 
   const filteredSites = useMemo(() => {
     if (!searchQuery.trim()) return sites;
@@ -131,6 +130,16 @@ export default function Gallery({
   }, [sitesByCategory, selectedCategory]);
 
   // ─── Site CRUD ────────────────────────────────────────────────────────────
+  /**
+   * After an add/update, decide whether the site still belongs in the current
+   * filtered view. If we're on /c/<id> and the site no longer has that
+   * collection tagged, drop it from local state.
+   */
+  function siteBelongsHere(site: Site): boolean {
+    if (currentCollectionId === null) return true;
+    return !!site.collections?.includes(currentCollectionId);
+  }
+
   async function handleAddSite(data: Omit<Site, "id" | "createdAt">) {
     const res = await fetch("/api/sites", {
       method: "POST",
@@ -139,7 +148,9 @@ export default function Gallery({
     });
     if (!res.ok) return;
     const newSite: Site = await res.json();
-    setSites((prev) => [...prev, newSite]);
+    if (siteBelongsHere(newSite)) {
+      setSites((prev) => [...prev, newSite]);
+    }
     setShowAddModal(false);
   }
 
@@ -151,7 +162,12 @@ export default function Gallery({
     });
     if (!res.ok) return;
     const updated: Site = await res.json();
-    setSites((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    if (siteBelongsHere(updated)) {
+      setSites((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    } else {
+      // The user removed this collection from the site — drop it from this view
+      setSites((prev) => prev.filter((s) => s.id !== id));
+    }
     setEditingSite(null);
   }
 
@@ -256,11 +272,41 @@ export default function Gallery({
     clearSelection();
   }
 
+  /** Add or remove a collection tag on every selected site. */
+  async function handleBulkToggleCollection(collectionId: string, add: boolean) {
+    const ids = Array.from(selectedIds);
+    const updates = sites
+      .filter((s) => selectedIds.has(s.id))
+      .map((s) => {
+        const current = new Set(s.collections ?? []);
+        if (add) current.add(collectionId);
+        else current.delete(collectionId);
+        return { id: s.id, collections: Array.from(current) };
+      });
+    await Promise.all(
+      updates.map(({ id, collections: c }) =>
+        fetch("/api/sites", {
+          method: "PUT",
+          headers: apiHeaders(),
+          body: JSON.stringify({ id, collections: c }),
+        })
+      )
+    );
+    // Update local state, removing rows that no longer belong here
+    setSites((prev) => {
+      const byId = new Map(updates.map((u) => [u.id, u.collections]));
+      return prev
+        .map((s) => (byId.has(s.id) ? { ...s, collections: byId.get(s.id)! } : s))
+        .filter((s) => (currentCollectionId === null ? true : s.collections?.includes(currentCollectionId)));
+    });
+    clearSelection();
+  }
+
   // ─── Collections CRUD ─────────────────────────────────────────────────────
   async function handleCreateCollection(name: string): Promise<Collection | null> {
     const res = await fetch("/api/collections", {
       method: "POST",
-      headers: companyHeaders(),
+      headers: apiHeaders(),
       body: JSON.stringify({ name }),
     });
     if (!res.ok) return null;
@@ -272,7 +318,7 @@ export default function Gallery({
   async function handleRenameCollection(id: string, name: string) {
     const res = await fetch("/api/collections", {
       method: "PUT",
-      headers: companyHeaders(),
+      headers: apiHeaders(),
       body: JSON.stringify({ id, name }),
     });
     if (!res.ok) return;
@@ -283,14 +329,22 @@ export default function Gallery({
   async function handleDeleteCollection(id: string) {
     const res = await fetch("/api/collections", {
       method: "DELETE",
-      headers: companyHeaders(),
+      headers: apiHeaders(),
       body: JSON.stringify({ id }),
     });
     if (!res.ok) return;
     setCollections((prev) => prev.filter((c) => c.id !== id));
-    // If they just deleted the collection they're viewing, send them home
-    if (id === collectionId) {
+    if (id === currentCollectionId) {
       window.location.href = "/";
+    } else {
+      // Strip the deleted id from local state so chips disappear
+      setSites((prev) =>
+        prev.map((s) =>
+          s.collections?.includes(id)
+            ? { ...s, collections: s.collections.filter((c) => c !== id) }
+            : s
+        )
+      );
     }
   }
 
@@ -314,13 +368,13 @@ export default function Gallery({
         <h1 className="text-lg font-semibold mb-1">Collection not found</h1>
         <p className="text-sm text-white/50 max-w-sm">
           This collection doesn&apos;t exist (or has been deleted).
-          {isAdmin && " Open the Default gallery and create it from Settings → Collections."}
+          {isAdmin && " Open the master view and create one from Settings → Collections."}
         </p>
         <a
           href="/"
           className="mt-6 px-4 py-2 bg-white text-black rounded-xl text-sm font-medium hover:bg-white/90 transition-colors"
         >
-          Go to Default
+          Go to All Sites
         </a>
       </div>
     );
@@ -335,9 +389,12 @@ export default function Gallery({
             🔗
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-medium text-white truncate">{collectionName}</div>
+            <div className="text-sm font-medium text-white truncate">{currentCollectionName}</div>
             <div className="text-[11px] text-white/40">
               {sites.length} {sites.length === 1 ? "site" : "sites"}
+              {currentCollectionId === null && collections.length > 0 && (
+                <> · {collections.length} {collections.length === 1 ? "collection" : "collections"}</>
+              )}
             </div>
           </div>
         </div>
@@ -420,10 +477,41 @@ export default function Gallery({
           >
             <CollectionsIcon />
             Collections
-            <span className="ml-0.5 text-[10px] bg-white/15 px-1.5 py-0.5 rounded-full">
-              {collections.length + 1}
-            </span>
+            {collections.length > 0 && (
+              <span className="ml-0.5 text-[10px] bg-white/15 px-1.5 py-0.5 rounded-full">
+                {collections.length}
+              </span>
+            )}
           </button>
+        </div>
+      )}
+
+      {/* Quick collection nav (admin only) — shows when there are collections, lets you jump between filtered views */}
+      {isAdmin && collections.length > 0 && (
+        <div className="flex items-center gap-1.5 px-5 pb-3 overflow-x-auto scrollbar-none">
+          <a
+            href="/"
+            className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${
+              currentCollectionId === null
+                ? "bg-white text-black border-white"
+                : "bg-white/[0.04] text-white/60 border-white/10 hover:text-white hover:bg-white/10"
+            }`}
+          >
+            All Sites
+          </a>
+          {collections.map((c) => (
+            <a
+              key={c.id}
+              href={`/c/${c.id}`}
+              className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${
+                currentCollectionId === c.id
+                  ? "bg-white text-black border-white"
+                  : "bg-white/[0.04] text-white/60 border-white/10 hover:text-white hover:bg-white/10"
+              }`}
+            >
+              {c.name}
+            </a>
+          ))}
         </div>
       )}
 
@@ -471,7 +559,12 @@ export default function Gallery({
       <div className="px-5 pb-8">
         {viewMode === "all" ? (
           filteredSites.length === 0 ? (
-            <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
+            <EmptyState
+              isAdmin={isAdmin}
+              editMode={editMode}
+              onAdd={() => setShowAddModal(true)}
+              currentCollectionName={currentCollectionId ? currentCollectionName : null}
+            />
           ) : (
             <div className={gridClass}>
               {filteredSites.map((site) => (
@@ -489,7 +582,12 @@ export default function Gallery({
           )
         ) : (
           categoryEntries.length === 0 ? (
-            <EmptyState isAdmin={isAdmin} editMode={editMode} onAdd={() => setShowAddModal(true)} />
+            <EmptyState
+              isAdmin={isAdmin}
+              editMode={editMode}
+              onAdd={() => setShowAddModal(true)}
+              currentCollectionName={currentCollectionId ? currentCollectionName : null}
+            />
           ) : (
             categoryEntries.map(([cat, catSites]) => (
               <div key={cat} className="mb-8">
@@ -522,11 +620,13 @@ export default function Gallery({
           count={selectedIds.size}
           total={filteredSites.length}
           categories={categories}
+          collections={collections}
           onSelectAll={selectAll}
           onClear={clearSelection}
           onDelete={handleBulkDelete}
           onAssignCategory={handleBulkAssignCategory}
           onAddTag={handleBulkAddTag}
+          onToggleCollection={handleBulkToggleCollection}
         />
       )}
 
@@ -534,6 +634,8 @@ export default function Gallery({
       {showQuickAdd && (
         <QuickAddModal
           categories={categories}
+          collections={collections}
+          defaultCollectionIds={defaultCollectionIds}
           companyId={companyId}
           defaultCategory={
             viewMode === "category" && selectedCategory ? selectedCategory : undefined
@@ -546,7 +648,9 @@ export default function Gallery({
             });
             if (!res.ok) throw new Error("Failed to save");
             const newSite: Site = await res.json();
-            setSites((prev) => [...prev, newSite]);
+            if (siteBelongsHere(newSite)) {
+              setSites((prev) => [...prev, newSite]);
+            }
             setShowQuickAdd(false);
           }}
           onClose={() => setShowQuickAdd(false)}
@@ -557,6 +661,8 @@ export default function Gallery({
       {showAddModal && (
         <AddSiteModal
           categories={categories}
+          collections={collections}
+          defaultCollectionIds={defaultCollectionIds}
           onAdd={handleAddSite}
           onClose={() => setShowAddModal(false)}
           onCreateCategory={handleAddCategory}
@@ -566,6 +672,7 @@ export default function Gallery({
       {editingSite && (
         <AddSiteModal
           categories={categories}
+          collections={collections}
           initialSite={editingSite}
           onUpdate={handleUpdateSite}
           onClose={() => setEditingSite(null)}
@@ -586,7 +693,7 @@ export default function Gallery({
       {showCollections && (
         <CollectionsManagerModal
           collections={collections}
-          currentCollectionId={collectionId}
+          currentCollectionId={currentCollectionId}
           onCreate={handleCreateCollection}
           onRename={handleRenameCollection}
           onDelete={handleDeleteCollection}
@@ -601,17 +708,23 @@ function EmptyState({
   isAdmin,
   editMode,
   onAdd,
+  currentCollectionName,
 }: {
   isAdmin: boolean;
   editMode: boolean;
   onAdd: () => void;
+  currentCollectionName: string | null;
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
       <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-3xl mb-4">
         🔗
       </div>
-      <p className="text-white/50 text-sm">No sites yet.</p>
+      <p className="text-white/50 text-sm">
+        {currentCollectionName
+          ? `No sites tagged with "${currentCollectionName}" yet.`
+          : "No sites yet."}
+      </p>
       {isAdmin && !editMode && (
         <p className="text-white/30 text-xs mt-1">Enable Settings to add sites.</p>
       )}

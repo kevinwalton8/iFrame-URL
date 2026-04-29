@@ -5,7 +5,8 @@ import type { Collection } from "@/lib/db";
 
 type Props = {
   collections: Collection[];
-  currentCollectionId: string;
+  /** null = master "All Sites" view; otherwise the id of the collection currently being viewed */
+  currentCollectionId: string | null;
   onCreate: (name: string) => Promise<Collection | null>;
   onRename: (id: string, name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -32,15 +33,14 @@ export default function CollectionsManagerModal({
     []
   );
 
-  // Synthesise a "Default" entry so it shows in the list alongside user-created ones
+  // Show a synthetic "All Sites" master entry alongside user-created collections
   const allEntries = useMemo(() => {
-    const def: Collection = { id: "default", name: "Default", createdAt: "" };
-    const others = collections.filter((c) => c.id !== "default");
-    return [def, ...others];
+    const master: Collection = { id: "__all__", name: "All Sites (master)", createdAt: "" };
+    return [master, ...collections];
   }, [collections]);
 
   function urlFor(id: string) {
-    if (id === "default") return `${origin}/`;
+    if (id === "__all__") return `${origin}/`;
     return `${origin}/c/${id}`;
   }
 
@@ -99,11 +99,7 @@ export default function CollectionsManagerModal({
   }
 
   function openCollection(id: string) {
-    if (id === "default") {
-      window.location.href = "/";
-    } else {
-      window.location.href = `/c/${id}`;
-    }
+    window.location.href = id === "__all__" ? "/" : `/c/${id}`;
   }
 
   return (
@@ -162,8 +158,9 @@ export default function CollectionsManagerModal({
         {/* List */}
         <div className="flex-1 overflow-y-auto">
           {allEntries.map((c) => {
-            const isCurrent = c.id === currentCollectionId;
-            const isDefault = c.id === "default";
+            const isMaster = c.id === "__all__";
+            const isCurrent = isMaster ? currentCollectionId === null : c.id === currentCollectionId;
+            const isLocked = isMaster; // master entry can't be renamed/deleted
             const isEditing = editingId === c.id;
             const url = urlFor(c.id);
             return (
@@ -215,7 +212,7 @@ export default function CollectionsManagerModal({
                             Current
                           </span>
                         )}
-                        {isDefault && (
+                        {isLocked && (
                           <span className="text-[10px] uppercase tracking-wide bg-white/5 text-white/50 px-1.5 py-0.5 rounded">
                             Locked
                           </span>
@@ -239,7 +236,7 @@ export default function CollectionsManagerModal({
                 </div>
 
                 {/* Actions */}
-                {!isDefault && !isEditing && (
+                {!isLocked && !isEditing && (
                   <div className="flex items-center gap-3 mt-2">
                     <button
                       onClick={() => {
@@ -266,7 +263,7 @@ export default function CollectionsManagerModal({
         {/* Footer hint */}
         <div className="px-5 py-3 border-t border-white/10 bg-black/30">
           <p className="text-[11px] text-white/40 leading-relaxed">
-            <strong className="text-white/60">How to use:</strong> create a collection, click <em>Copy</em>, then paste the URL into your duplicated app's iframe URL inside Whop. That duplicate will only ever show this collection's URLs.
+            <strong className="text-white/60">How it works:</strong> all sites live in one shared pool. Tag a site with a collection (when adding/editing) and it shows up at that collection&apos;s URL. Paste a URL below into a duplicated app in Whop and it only shows tagged sites.
           </p>
         </div>
       </div>

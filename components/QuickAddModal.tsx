@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { Site, Category } from "@/lib/db";
+import type { Site, Category, Collection } from "@/lib/db";
 
 type Props = {
   categories: Category[];
+  collections?: Collection[];
+  /** Pre-checked collection IDs (e.g. when on a /c/[id] page) */
+  defaultCollectionIds?: string[];
   companyId: string;
   defaultCategory?: string;
   onAdd: (data: Omit<Site, "id" | "createdAt">) => Promise<void>;
@@ -14,10 +17,22 @@ type Props = {
 
 type Status = "idle" | "fetching" | "saving" | "done" | "error";
 
-export default function QuickAddModal({ categories, companyId, defaultCategory, onAdd, onClose, onCreateCategory }: Props) {
+export default function QuickAddModal({
+  categories,
+  collections = [],
+  defaultCollectionIds = [],
+  companyId,
+  defaultCategory,
+  onAdd,
+  onClose,
+  onCreateCategory,
+}: Props) {
   const [url, setUrl] = useState("");
   const [category, setCategory] = useState(
     defaultCategory ?? categories[0]?.name ?? "Uncategorized"
+  );
+  const [selectedCollections, setSelectedCollections] = useState<Set<string>>(
+    () => new Set(defaultCollectionIds)
   );
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -26,6 +41,14 @@ export default function QuickAddModal({ categories, companyId, defaultCategory, 
 
   // Preview state while fetching
   const [preview, setPreview] = useState<{ title: string; imageUrl: string; description: string } | null>(null);
+
+  function toggleCollection(id: string) {
+    setSelectedCollections((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   async function handleQuickAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -54,6 +77,7 @@ export default function QuickAddModal({ categories, companyId, defaultCategory, 
         imageUrl: fetched.imageUrl,
         category: category || "Uncategorized",
         tags: [],
+        collections: Array.from(selectedCollections),
       });
 
       setStatus("done");
@@ -75,12 +99,12 @@ export default function QuickAddModal({ categories, companyId, defaultCategory, 
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl">
+      <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <div>
             <h2 className="text-base font-semibold">Quick Add</h2>
-            <p className="text-xs text-white/40 mt-0.5">Paste a URL — we'll fetch everything else</p>
+            <p className="text-xs text-white/40 mt-0.5">Paste a URL — we&apos;ll fetch everything else</p>
           </div>
           <button
             onClick={onClose}
@@ -140,6 +164,35 @@ export default function QuickAddModal({ categories, companyId, defaultCategory, 
                 className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-xl flex items-center justify-center text-white/60 hover:text-white transition-colors text-lg leading-none"
                 aria-label="New category"
               >+</button>
+            </div>
+          )}
+
+          {/* Collections */}
+          {collections.length > 0 && (
+            <div>
+              <label className="text-[11px] font-semibold text-white/40 uppercase tracking-wider mb-1.5 block">
+                Collections
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {collections.map((c) => {
+                  const checked = selectedCollections.has(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggleCollection(c.id)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        checked
+                          ? "bg-white text-black border-white"
+                          : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      {checked && <span className="mr-1">✓</span>}
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 

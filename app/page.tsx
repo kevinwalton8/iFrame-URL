@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { hasAccess, authorizedUserOn, validateToken } from "@whop-apps/sdk";
-import { getSites, getCategories, getCollections, DEFAULT_COLLECTION_ID } from "@/lib/db";
+import { getSites, getCategories, getCollections } from "@/lib/db";
 import Gallery from "@/components/Gallery";
 
 export default async function Home() {
@@ -27,10 +27,10 @@ export default async function Home() {
     }
   }
 
-  // Fetch the Default collection's data + the list of all collections
+  // Master view — all sites (regardless of which collections they're tagged with)
   const [sites, categories, collections] = await Promise.all([
-    getSites(companyId, DEFAULT_COLLECTION_ID),
-    getCategories(companyId, DEFAULT_COLLECTION_ID),
+    getSites(companyId),
+    getCategories(companyId),
     getCollections(companyId),
   ]);
 
@@ -39,8 +39,8 @@ export default async function Home() {
       initialSites={sites}
       initialCategories={categories}
       initialCollections={collections}
-      collectionId={DEFAULT_COLLECTION_ID}
-      collectionName="Default"
+      currentCollectionId={null}
+      currentCollectionName="All Sites"
       isAdmin={isAdmin}
       companyId={companyId}
     />

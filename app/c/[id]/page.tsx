@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { hasAccess, authorizedUserOn, validateToken } from "@whop-apps/sdk";
-import { getSites, getCategories, getCollections, DEFAULT_COLLECTION_ID } from "@/lib/db";
+import { getSites, getCategories, getCollections } from "@/lib/db";
 import Gallery from "@/components/Gallery";
 
 type PageProps = {
@@ -32,32 +32,25 @@ export default async function CollectionPage({ params }: PageProps) {
     }
   }
 
-  const collections = await getCollections(companyId);
+  const [allSites, categories, collections] = await Promise.all([
+    getSites(companyId),
+    getCategories(companyId),
+    getCollections(companyId),
+  ]);
 
-  // Resolve the collection by id. The "default" id always exists.
-  let collectionName = "Default";
-  let exists = id === DEFAULT_COLLECTION_ID;
-  if (!exists) {
-    const coll = collections.find((c) => c.id === id);
-    if (coll) {
-      collectionName = coll.name;
-      exists = true;
-    } else {
-      collectionName = "Collection not found";
-    }
-  }
-
-  const [sites, categories] = exists
-    ? await Promise.all([getSites(companyId, id), getCategories(companyId, id)])
-    : [[], []];
+  const collection = collections.find((c) => c.id === id);
+  const exists = !!collection;
+  const filteredSites = exists
+    ? allSites.filter((s) => s.collections?.includes(id))
+    : [];
 
   return (
     <Gallery
-      initialSites={sites}
+      initialSites={filteredSites}
       initialCategories={categories}
       initialCollections={collections}
-      collectionId={id}
-      collectionName={collectionName}
+      currentCollectionId={id}
+      currentCollectionName={collection?.name ?? "Collection not found"}
       isAdmin={isAdmin}
       companyId={companyId}
       notFound={!exists}

@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useRef } from "react";
-import type { Site, Category } from "@/lib/db";
+import type { Site, Category, Collection } from "@/lib/db";
 
 type Props = {
   categories: Category[];
+  collections?: Collection[];
+  /** Pre-checked collection IDs when creating a new site (e.g. on a /c/[id] page) */
+  defaultCollectionIds?: string[];
   initialSite?: Site;
   onAdd?: (data: Omit<Site, "id" | "createdAt">) => Promise<void>;
   onUpdate?: (id: string, data: Omit<Site, "id" | "createdAt">) => Promise<void>;
@@ -14,6 +17,8 @@ type Props = {
 
 export default function AddSiteModal({
   categories,
+  collections = [],
+  defaultCollectionIds = [],
   initialSite,
   onAdd,
   onUpdate,
@@ -31,6 +36,12 @@ export default function AddSiteModal({
   );
   const [tags, setTags] = useState(initialSite?.tags?.join(", ") ?? "");
 
+  // Collection assignment — when editing, use the site's existing collections;
+  // when creating, pre-fill with the current page's collection (if any).
+  const [selectedCollections, setSelectedCollections] = useState<Set<string>>(
+    () => new Set(initialSite?.collections ?? defaultCollectionIds)
+  );
+
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -41,6 +52,14 @@ export default function AddSiteModal({
   const [imageMode, setImageMode] = useState<"url" | "upload">("url");
   const [uploadPreview, setUploadPreview] = useState<string>(initialSite?.imageUrl ?? "");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function toggleCollection(id: string) {
+    setSelectedCollections((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   async function handleFetch() {
     if (!url.trim()) return;
@@ -94,6 +113,7 @@ export default function AddSiteModal({
       imageUrl: imageUrl.trim(),
       category: category || "Uncategorized",
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      collections: Array.from(selectedCollections),
     };
 
     if (isEditing && onUpdate) {
@@ -290,6 +310,44 @@ export default function AddSiteModal({
                   +
                 </button>
               </div>
+            )}
+          </div>
+
+          {/* Collections */}
+          <div>
+            <label className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-1.5 block">
+              Collections
+            </label>
+            {collections.length === 0 ? (
+              <p className="text-xs text-white/40 bg-white/[0.03] border border-white/5 rounded-xl px-3 py-2.5">
+                No collections yet. Create one from <span className="text-white/60">Settings → Collections</span>.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {collections.map((c) => {
+                  const checked = selectedCollections.has(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggleCollection(c.id)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        checked
+                          ? "bg-white text-black border-white"
+                          : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      {checked && <span className="mr-1">✓</span>}
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {collections.length > 0 && (
+              <p className="text-[10px] text-white/30 mt-1.5">
+                Tap to toggle. This site appears wherever you tag it.
+              </p>
             )}
           </div>
 

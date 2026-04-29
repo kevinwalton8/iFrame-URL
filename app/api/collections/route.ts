@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCollections, saveCollections, deleteCollectionData, type Collection } from "@/lib/db";
+import { getCollections, saveCollections, scrubCollectionFromSites, type Collection } from "@/lib/db";
 import { hasAccess, authorizedUserOn } from "@whop-apps/sdk";
 import { headers } from "next/headers";
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   const collections = await getCollections(companyId);
   const baseSlug = slugify(name);
 
-  // The id "default" is reserved for the legacy/default bucket.
+  // Reserve "default" — it's used elsewhere as the no-collection sentinel
   let id = baseSlug === "default" ? "default-2" : baseSlug;
   let suffix = 1;
   while (collections.find((c) => c.id === id)) {
@@ -80,12 +80,10 @@ export async function DELETE(req: NextRequest) {
   if (!isAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   const companyId = getCompanyId(req);
   const { id } = await req.json();
-  if (id === "default") {
-    return NextResponse.json({ error: "The Default collection cannot be deleted" }, { status: 400 });
-  }
   const collections = await getCollections(companyId);
   const updated = collections.filter((c) => c.id !== id);
   await saveCollections(updated, companyId);
-  await deleteCollectionData(companyId, id);
+  // Clean the deleted ID off any sites that were tagged with it
+  await scrubCollectionFromSites(companyId, id);
   return NextResponse.json({ ok: true });
 }
