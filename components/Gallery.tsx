@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import type { Site, Category, Collection } from "@/lib/db";
 import SiteCard from "./SiteCard";
 import AddSiteModal from "./AddSiteModal";
@@ -77,6 +77,34 @@ export default function Gallery({
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Category pill order (persisted to localStorage)
+  const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const s = localStorage.getItem("gallery-category-order");
+        if (s) return JSON.parse(s);
+      } catch {}
+    }
+    return initialCategories.map((c) => c.name);
+  });
+
+  // Collection nav order (persisted to localStorage)
+  const [collectionOrder, setCollectionOrder] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const s = localStorage.getItem("gallery-collection-order");
+        if (s) return JSON.parse(s);
+      } catch {}
+    }
+    return initialCollections.map((c) => c.id);
+  });
+
+  // Drag refs — use refs to avoid thrashing state during drag
+  const dragCatIdx = useRef<number | null>(null);
+  const [dragCatOver, setDragCatOver] = useState<number | null>(null);
+  const dragColIdx = useRef<number | null>(null);
+  const [dragColOver, setDragColOver] = useState<number | null>(null);
+
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -142,13 +170,28 @@ export default function Gallery({
 
   const activeCategoryNames = useMemo(() => Array.from(sitesByCategory.keys()), [sitesByCategory]);
 
+  // Category names sorted by user-defined drag order; new/unknown categories appended at end
+  const orderedCategoryNames = useMemo(() => {
+    const extra = activeCategoryNames.filter((n) => !categoryOrder.includes(n));
+    return [...categoryOrder, ...extra].filter((n) => activeCategoryNames.includes(n));
+  }, [categoryOrder, activeCategoryNames]);
+
+  // Collections sorted by user-defined drag order; new collections appended at end
+  const orderedCollections = useMemo(() => {
+    const extra = collections.filter((c) => !collectionOrder.includes(c.id)).map((c) => c.id);
+    const order = [...collectionOrder, ...extra];
+    return order.map((id) => collections.find((c) => c.id === id)).filter(Boolean) as typeof collections;
+  }, [collectionOrder, collections]);
+
   const categoryEntries = useMemo(() => {
     if (selectedCategory) {
       const s = sitesByCategory.get(selectedCategory);
       return s ? [[selectedCategory, s] as [string, Site[]]] : [];
     }
-    return Array.from(sitesByCategory.entries());
-  }, [sitesByCategory, selectedCategory]);
+    return orderedCategoryNames
+      .map((name) => [name, sitesByCategory.get(name)!] as [string, Site[]])
+      .filter(([, s]) => s != null);
+  }, [sitesByCategory, selectedCategory, orderedCategoryNames]);
 
   // ─── Site CRUD ────────────────────────────────────────────────────────────
   /**
@@ -369,6 +412,71 @@ export default function Gallery({
     }
   }
 
+  // ─── Order persistence ────────────────────────────────────────────────────
+  function saveCategoryOrder(order: string[]) {
+    setCategoryOrder(order);
+    if (typeof window !== "undefined")
+      localStorage.setItem("gallery-category-order", JSON.stringify(order));
+  }
+
+  function saveCollectionOrder(order: string[]) {
+    setCollectionOrder(order);
+    if (typeof window !== "undefined")
+      localStorage.setItem("gallery-collection-order", JSON.stringify(order));
+  }
+
+  // ─── Drag handlers: category pills ────────────────────────────────────────
+  function handleCatDragStart(e: React.DragEvent, idx: number) {
+    dragCatIdx.current = idx;
+    e.dataTransfer.effectAllowed = "move";
+  }
+  function handleCatDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragCatOver(idx);
+  }
+  function handleCatDrop(e: React.DragEvent, toIdx: number) {
+    e.preventDefault();
+    const fromIdx = dragCatIdx.current;
+    dragCatIdx.current = null;
+    setDragCatOver(null);
+    if (fromIdx === null || fromIdx === toIdx) return;
+    const next = [...orderedCategoryNames];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    saveCategoryOrder(next);
+  }
+  function handleCatDragEnd() {
+    dragCatIdx.current = null;
+    setDragCatOver(null);
+  }
+
+  // ─── Drag handlers: collection nav ────────────────────────────────────────
+  function handleColDragStart(e: React.DragEvent, idx: number) {
+    dragColIdx.current = idx;
+    e.dataTransfer.effectAllowed = "move";
+  }
+  function handleColDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragColOver(idx);
+  }
+  function handleColDrop(e: React.DragEvent, toIdx: number) {
+    e.preventDefault();
+    const fromIdx = dragColIdx.current;
+    dragColIdx.current = null;
+    setDragColOver(null);
+    if (fromIdx === null || fromIdx === toIdx) return;
+    const next = orderedCollections.map((c) => c.id);
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    saveCollectionOrder(next);
+  }
+  function handleColDragEnd() {
+    dragColIdx.current = null;
+    setDragColOver(null);
+  }
+
   // ─── Layout ───────────────────────────────────────────────────────────────
   const gridClass = `grid grid-cols-2 sm:grid-cols-3 ${{
     3: "lg:grid-cols-3",
@@ -522,14 +630,21 @@ export default function Gallery({
           >
             All Sites
           </a>
-          {collections.map((c) => (
+          {orderedCollections.map((c, idx) => (
             <a
               key={c.id}
               href={`/c/${c.id}`}
-              className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${
+              draggable
+              onDragStart={(e) => handleColDragStart(e, idx)}
+              onDragOver={(e) => handleColDragOver(e, idx)}
+              onDrop={(e) => handleColDrop(e, idx)}
+              onDragEnd={handleColDragEnd}
+              className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all whitespace-nowrap cursor-grab active:cursor-grabbing select-none ${
                 currentCollectionId === c.id
                   ? "bg-white text-black border-white"
                   : "bg-white/[0.04] text-white/60 border-white/10 hover:text-white hover:bg-white/10"
+              } ${dragColOver === idx && dragColIdx.current !== idx ? "border-white/50 scale-105" : ""} ${
+                dragColIdx.current === idx ? "opacity-40" : ""
               }`}
             >
               {c.name}
@@ -558,17 +673,24 @@ export default function Gallery({
           By Category
         </button>
 
-        {viewMode === "category" && activeCategoryNames.length > 0 && (
+        {viewMode === "category" && orderedCategoryNames.length > 0 && (
           <>
             <div className="flex-shrink-0 w-px h-4 bg-white/15 mx-0.5" />
-            {activeCategoryNames.map((name) => (
+            {orderedCategoryNames.map((name, idx) => (
               <button
                 key={name}
+                draggable
+                onDragStart={(e) => handleCatDragStart(e, idx)}
+                onDragOver={(e) => handleCatDragOver(e, idx)}
+                onDrop={(e) => handleCatDrop(e, idx)}
+                onDragEnd={handleCatDragEnd}
                 onClick={() => setSelectedCategory((prev) => (prev === name ? null : name))}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap cursor-grab active:cursor-grabbing select-none ${
                   selectedCategory === name
                     ? "bg-white/20 text-white ring-1 ring-white/30"
                     : "text-white/50 hover:text-white hover:bg-white/10"
+                } ${dragCatOver === idx && dragCatIdx.current !== idx ? "ring-1 ring-white/50 scale-105" : ""} ${
+                  dragCatIdx.current === idx ? "opacity-40" : ""
                 }`}
               >
                 {name}
