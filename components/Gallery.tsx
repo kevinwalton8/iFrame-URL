@@ -37,11 +37,11 @@ export default function EmbedManager({ initialCollections, isAdmin, companyId }:
     return { "Content-Type": "application/json", "x-company-id": companyId };
   }
 
-  async function handleCreate(name: string, url: string): Promise<Collection | null> {
+  async function handleCreate(name: string, url: string, code: string, embedType: "url" | "code"): Promise<Collection | null> {
     const res = await fetch("/api/collections", {
       method: "POST",
       headers: apiHeaders(),
-      body: JSON.stringify({ name, url }),
+      body: JSON.stringify({ name, url: url || undefined, code: code || undefined, embedType }),
     });
     if (!res.ok) return null;
     const created: Collection = await res.json();
@@ -205,14 +205,16 @@ function AddEmbedModal({
   onDelete,
   collections,
 }: {
-  onCreate: (name: string, url: string) => Promise<Collection | null>;
+  onCreate: (name: string, url: string, code: string, embedType: "url" | "code") => Promise<Collection | null>;
   onClose: () => void;
   onRename: (id: string, name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   collections: Collection[];
 }) {
+  const [tab, setTab] = useState<"url" | "code">("url");
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [code, setCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<Collection | null>(null);
   const [copied, setCopied] = useState(false);
@@ -225,12 +227,16 @@ function AddEmbedModal({
     []
   );
 
+  const canSave = tab === "url"
+    ? name.trim() && url.trim()
+    : name.trim() && code.trim();
+
   async function handleSave() {
-    if (!name.trim() || !url.trim()) return;
+    if (!canSave) return;
     setSaving(true);
     setError(null);
     try {
-      const result = await onCreate(name.trim(), url.trim());
+      const result = await onCreate(name.trim(), url.trim(), code.trim(), tab);
       if (!result) {
         setError("Failed to create embed. Try again.");
         return;
@@ -303,10 +309,7 @@ function AddEmbedModal({
           <>
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 flex-shrink-0">
-              <div>
-                <h2 className="text-base font-semibold text-white">Add New URL</h2>
-                <p className="text-xs text-white/40 mt-0.5">Creates a shareable iframe embed link</p>
-              </div>
+              <h2 className="text-base font-semibold text-white">Add New Embed</h2>
               <button
                 onClick={onClose}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
@@ -316,35 +319,78 @@ function AddEmbedModal({
               </button>
             </div>
 
+            {/* Tabs */}
+            <div className="flex px-5 pt-4 gap-1 flex-shrink-0">
+              <button
+                onClick={() => setTab("url")}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  tab === "url"
+                    ? "bg-white text-black"
+                    : "text-white/50 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                <LinkIcon />
+                URL Embed
+              </button>
+              <button
+                onClick={() => setTab("code")}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  tab === "code"
+                    ? "bg-white text-black"
+                    : "text-white/50 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                <CodeIcon />
+                Code Embed
+              </button>
+            </div>
+
             {/* Form */}
             <div className="p-5 space-y-4 border-b border-white/10 flex-shrink-0">
               <div>
                 <label className="text-xs font-medium text-white/60 mb-1.5 block">Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Notion Doc, Course Materials"
+                  placeholder={tab === "url" ? "e.g. Notion Doc, Course Materials" : "e.g. B-Roll Shot List, Dashboard"}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && tab === "url") handleSave(); }}
                   autoFocus
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30 transition-colors"
                 />
               </div>
-              <div>
-                <label className="text-xs font-medium text-white/60 mb-1.5 block">URL to embed</label>
-                <input
-                  type="url"
-                  placeholder="https://notion.so/your-page"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30 transition-colors"
-                />
-              </div>
+
+              {tab === "url" ? (
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1.5 block">URL to embed</label>
+                  <input
+                    type="url"
+                    placeholder="https://notion.so/your-page"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30 transition-colors"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1.5 block">
+                    HTML / CSS / JS code
+                  </label>
+                  <textarea
+                    placeholder={"Paste your full HTML document here...\n\n<!DOCTYPE html>\n<html>..."}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    rows={10}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-mono placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors resize-none leading-relaxed"
+                  />
+                </div>
+              )}
+
               {error && <p className="text-xs text-red-400">{error}</p>}
               <button
                 onClick={handleSave}
-                disabled={!name.trim() || !url.trim() || saving}
+                disabled={!canSave || saving}
                 className="w-full py-2.5 bg-white text-black rounded-xl text-sm font-semibold disabled:opacity-40 hover:bg-white/90 transition-colors"
               >
                 {saving ? "Saving…" : "Save & Get Link"}
@@ -445,6 +491,24 @@ function SettingsIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function LinkIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+  );
+}
+
+function CodeIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="16 18 22 12 16 6" />
+      <polyline points="8 6 2 12 8 18" />
     </svg>
   );
 }

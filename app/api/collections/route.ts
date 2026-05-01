@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const isAdmin = await checkAdmin(req);
   if (!isAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   const companyId = getCompanyId(req);
-  const { name, url } = await req.json();
+  const { name, url, code, embedType } = await req.json();
   if (!name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 });
 
   const collections = await getCollections(companyId);
@@ -54,7 +54,9 @@ export async function POST(req: NextRequest) {
   const newCollection: Collection = {
     id,
     name: name.trim(),
+    embedType: embedType ?? (code ? "code" : "url"),
     url: url?.trim() || undefined,
+    code: code || undefined,
     createdAt: new Date().toISOString(),
   };
   collections.push(newCollection);
@@ -66,12 +68,14 @@ export async function PUT(req: NextRequest) {
   const isAdmin = await checkAdmin(req);
   if (!isAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   const companyId = getCompanyId(req);
-  const { id, name, url } = await req.json();
+  const { id, name, url, code, embedType } = await req.json();
   const collections = await getCollections(companyId);
   const idx = collections.findIndex((c) => c.id === id);
   if (idx === -1) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (name !== undefined) collections[idx].name = name.trim();
   if (url !== undefined) collections[idx].url = url.trim() || undefined;
+  if (code !== undefined) collections[idx].code = code || undefined;
+  if (embedType !== undefined) collections[idx].embedType = embedType;
   await saveCollections(collections, companyId);
   return NextResponse.json(collections[idx]);
 }

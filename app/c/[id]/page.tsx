@@ -34,6 +34,29 @@ export default async function EmbedPage({ params }: PageProps) {
     );
   }
 
+  // Code embed — render raw HTML via srcdoc
+  if (embed.embedType === "code" || embed.code) {
+    if (!embed.code) {
+      return (
+        <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center gap-2">
+          <p className="text-sm text-white/50">No code configured for &ldquo;{embed.name}&rdquo;</p>
+          <a href="/" className="text-xs text-white/30 hover:text-white/60 transition-colors">← Back</a>
+        </div>
+      );
+    }
+    return (
+      <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh" }}>
+        <iframe
+          srcDoc={embed.code}
+          style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+          allowFullScreen
+          allow="fullscreen; clipboard-read; clipboard-write"
+        />
+      </div>
+    );
+  }
+
+  // URL embed
   if (!embed.url) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center gap-2">
