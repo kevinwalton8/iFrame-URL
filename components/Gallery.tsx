@@ -108,13 +108,22 @@ export default function EmbedManager({ initialCollections, isAdmin, companyId }:
           <span className="text-sm font-semibold text-white">iFrame URL</span>
         </div>
         {isAdmin && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-4 h-8 bg-white text-black rounded-full text-sm font-semibold hover:bg-white/90 transition-colors"
-          >
-            <span className="text-base leading-none">+</span>
-            Add New URL
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 px-4 h-8 bg-white text-black rounded-full text-sm font-semibold hover:bg-white/90 transition-colors"
+            >
+              <span className="text-base leading-none">+</span>
+              Add New URL
+            </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              aria-label="Settings"
+            >
+              <SettingsIcon />
+            </button>
+          </div>
         )}
       </div>
 
@@ -428,6 +437,15 @@ function CopyButton({ url }: { url: string }) {
     >
       {copied ? "Copied!" : "Copy"}
     </button>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
   );
 }
 
