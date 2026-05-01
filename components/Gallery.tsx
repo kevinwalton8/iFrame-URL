@@ -49,14 +49,21 @@ export default function EmbedManager({ initialCollections, isAdmin, companyId }:
     return created;
   }
 
-  async function handleRename(id: string, name: string) {
+  async function handleUpdate(
+    id: string,
+    name: string,
+    url: string,
+    code: string,
+    embedType: "url" | "code"
+  ) {
     const res = await fetch("/api/collections", {
       method: "PUT",
       headers: apiHeaders(),
-      body: JSON.stringify({ id, name }),
+      body: JSON.stringify({ id, name, url: url || undefined, code: code || undefined, embedType }),
     });
     if (!res.ok) return;
-    setCollections((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
+    const updated: Collection = await res.json();
+    setCollections((prev) => prev.map((c) => (c.id === id ? updated : c)));
   }
 
   async function handleDelete(id: string) {
@@ -188,8 +195,8 @@ export default function EmbedManager({ initialCollections, isAdmin, companyId }:
       {showAddModal && isAdmin && (
         <AddEmbedModal
           onCreate={handleCreate}
+          onUpdate={handleUpdate}
           onClose={() => setShowAddModal(false)}
-          onRename={handleRename}
           onDelete={handleDelete}
           collections={orderedCollections}
         />
@@ -200,14 +207,14 @@ export default function EmbedManager({ initialCollections, isAdmin, companyId }:
 
 function AddEmbedModal({
   onCreate,
+  onUpdate,
   onClose,
-  onRename,
   onDelete,
   collections,
 }: {
   onCreate: (name: string, url: string, code: string, embedType: "url" | "code") => Promise<Collection | null>;
+  onUpdate: (id: string, name: string, url: string, code: string, embedType: "url" | "code") => Promise<void>;
   onClose: () => void;
-  onRename: (id: string, name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   collections: Collection[];
 }) {
@@ -219,8 +226,44 @@ function AddEmbedModal({
   const [created, setCreated] = useState<Collection | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // Edit mode
+  const [editingEmbed, setEditingEmbed] = useState<Collection | null>(null);
+  const [editTab, setEditTab] = useState<"url" | "code">("url");
   const [editName, setEditName] = useState("");
+  const [editUrl, setEditUrl] = useState("");
+  const [editCode, setEditCode] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function startEditing(c: Collection) {
+    setEditingEmbed(c);
+    setEditTab(c.embedType ?? (c.code ? "code" : "url"));
+    setEditName(c.name);
+    setEditUrl(c.url ?? "");
+    setEditCode(c.code ?? "");
+    setEditError(null);
+  }
+
+  function cancelEditing() {
+    setEditingEmbed(null);
+    setEditError(null);
+  }
+
+  async function handleUpdateSubmit() {
+    if (!editingEmbed) return;
+    const canSave = editTab === "url" ? editName.trim() && editUrl.trim() : editName.trim() && editCode.trim();
+    if (!canSave) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await onUpdate(editingEmbed.id, editName.trim(), editUrl.trim(), editCode.trim(), editTab);
+      setEditingEmbed(null);
+    } catch {
+      setEditError("Failed to save. Try again.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   const origin = useMemo(
     () => (typeof window !== "undefined" ? window.location.origin : ""),
@@ -257,13 +300,6 @@ function AddEmbedModal({
     } catch {
       window.prompt("Copy this URL:", text);
     }
-  }
-
-  async function handleRenameSubmit(id: string) {
-    const trimmed = editName.trim();
-    if (!trimmed) { setEditingId(null); return; }
-    await onRename(id, trimmed);
-    setEditingId(null);
   }
 
   const shareUrl = created ? `${origin}/c/${created.id}` : "";
@@ -305,7 +341,94 @@ function AddEmbedModal({
               Done
             </button>
           </div>
+        ) : editingEmbed ? (
+          /* ── Edit existing embed ── */
+          <>
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 flex-shrink-0">
+              <button
+                onClick={cancelEditing}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+                aria-label="Back"
+              >
+                <BackIcon />
+              </button>
+              <h2 className="text-base font-semibold text-white">Edit Embed</h2>
+              <button
+                onClick={onClose}
+                className="ml-auto w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Edit tabs */}
+            <div className="flex px-5 pt-4 gap-1 flex-shrink-0">
+              <button
+                onClick={() => setEditTab("url")}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${editTab === "url" ? "bg-white text-black" : "text-white/50 hover:text-white hover:bg-white/10"}`}
+              >
+                <LinkIcon />
+                URL Embed
+              </button>
+              <button
+                onClick={() => setEditTab("code")}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${editTab === "code" ? "bg-white text-black" : "text-white/50 hover:text-white hover:bg-white/10"}`}
+              >
+                <CodeIcon />
+                Code Embed
+              </button>
+            </div>
+
+            {/* Edit form */}
+            <div className="p-5 space-y-4 flex-1 overflow-y-auto">
+              <div>
+                <label className="text-xs font-medium text-white/60 mb-1.5 block">Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  autoFocus
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30 transition-colors"
+                />
+              </div>
+
+              {editTab === "url" ? (
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1.5 block">URL to embed</label>
+                  <input
+                    type="url"
+                    placeholder="https://notion.so/your-page"
+                    value={editUrl}
+                    onChange={(e) => setEditUrl(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30 transition-colors"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1.5 block">HTML / CSS / JS code</label>
+                  <textarea
+                    placeholder={"Paste your full HTML document here...\n\n<!DOCTYPE html>\n<html>..."}
+                    value={editCode}
+                    onChange={(e) => setEditCode(e.target.value)}
+                    rows={12}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-mono placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors resize-none leading-relaxed"
+                  />
+                </div>
+              )}
+
+              {editError && <p className="text-xs text-red-400">{editError}</p>}
+              <button
+                onClick={handleUpdateSubmit}
+                disabled={editSaving || !(editTab === "url" ? editName.trim() && editUrl.trim() : editName.trim() && editCode.trim())}
+                className="w-full py-2.5 bg-white text-black rounded-xl text-sm font-semibold disabled:opacity-40 hover:bg-white/90 transition-colors"
+              >
+                {editSaving ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          </>
         ) : (
+          /* ── Create new embed ── */
           <>
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 flex-shrink-0">
@@ -323,29 +446,21 @@ function AddEmbedModal({
             <div className="flex px-5 pt-4 gap-1 flex-shrink-0">
               <button
                 onClick={() => setTab("url")}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  tab === "url"
-                    ? "bg-white text-black"
-                    : "text-white/50 hover:text-white hover:bg-white/10"
-                }`}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === "url" ? "bg-white text-black" : "text-white/50 hover:text-white hover:bg-white/10"}`}
               >
                 <LinkIcon />
                 URL Embed
               </button>
               <button
                 onClick={() => setTab("code")}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  tab === "code"
-                    ? "bg-white text-black"
-                    : "text-white/50 hover:text-white hover:bg-white/10"
-                }`}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === "code" ? "bg-white text-black" : "text-white/50 hover:text-white hover:bg-white/10"}`}
               >
                 <CodeIcon />
                 Code Embed
               </button>
             </div>
 
-            {/* Form */}
+            {/* Create form */}
             <div className="p-5 space-y-4 border-b border-white/10 flex-shrink-0">
               <div>
                 <label className="text-xs font-medium text-white/60 mb-1.5 block">Name</label>
@@ -374,9 +489,7 @@ function AddEmbedModal({
                 </div>
               ) : (
                 <div>
-                  <label className="text-xs font-medium text-white/60 mb-1.5 block">
-                    HTML / CSS / JS code
-                  </label>
+                  <label className="text-xs font-medium text-white/60 mb-1.5 block">HTML / CSS / JS code</label>
                   <textarea
                     placeholder={"Paste your full HTML document here...\n\n<!DOCTYPE html>\n<html>..."}
                     value={code}
@@ -405,52 +518,34 @@ function AddEmbedModal({
                 </p>
                 {collections.map((c) => {
                   const embedUrl = `${origin}/c/${c.id}`;
-                  const isEditing = editingId === c.id;
                   return (
                     <div key={c.id} className="px-5 py-3 border-b border-white/5">
-                      {isEditing ? (
-                        <div className="flex items-center gap-2 mb-2">
-                          <input
-                            type="text"
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleRenameSubmit(c.id);
-                              if (e.key === "Escape") setEditingId(null);
-                            }}
-                            autoFocus
-                            className="flex-1 bg-white/5 border border-white/20 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-white/40"
-                          />
-                          <button onClick={() => handleRenameSubmit(c.id)} className="text-xs text-white/80 hover:text-white px-2">Save</button>
-                          <button onClick={() => setEditingId(null)} className="text-xs text-white/40 hover:text-white px-2">Cancel</button>
-                        </div>
-                      ) : (
-                        <p className="text-sm font-medium text-white mb-2">{c.name}</p>
-                      )}
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-white">{c.name}</p>
+                        <span className="text-[10px] uppercase tracking-wide text-white/30 font-mono">
+                          {c.embedType ?? "url"}
+                        </span>
+                      </div>
                       <div className="flex items-center gap-2">
                         <code className="flex-1 min-w-0 truncate text-xs text-white/40 bg-white/[0.03] px-2 py-1.5 rounded">
                           {embedUrl}
                         </code>
                         <CopyButton url={embedUrl} />
                       </div>
-                      {!isEditing && (
-                        <div className="flex items-center gap-3 mt-2">
-                          <button
-                            onClick={() => { setEditingId(c.id); setEditName(c.name); }}
-                            className="text-xs text-white/40 hover:text-white/70 transition-colors"
-                          >
-                            Rename
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete "${c.name}"?`)) onDelete(c.id);
-                            }}
-                            className="text-xs text-red-400/70 hover:text-red-400 transition-colors"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-3 mt-2">
+                        <button
+                          onClick={() => startEditing(c)}
+                          className="text-xs text-white/40 hover:text-white/70 transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => { if (confirm(`Delete "${c.name}"?`)) onDelete(c.id); }}
+                          className="text-xs text-red-400/70 hover:text-red-400 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -491,6 +586,14 @@ function SettingsIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M19 12H5M12 5l-7 7 7 7" />
     </svg>
   );
 }
