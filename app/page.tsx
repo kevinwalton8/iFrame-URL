@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { hasAccess, authorizedUserOn, validateToken } from "@whop-apps/sdk";
-import { getSites, getCategories, getCollections } from "@/lib/db";
-import Gallery from "@/components/Gallery";
+import { getCollections } from "@/lib/db";
+import EmbedManager from "@/components/Gallery";
 
 export default async function Home() {
   const hdrs = await headers();
@@ -27,20 +27,11 @@ export default async function Home() {
     }
   }
 
-  // Master view — all sites (regardless of which collections they're tagged with)
-  const [sites, categories, collections] = await Promise.all([
-    getSites(companyId),
-    getCategories(companyId),
-    getCollections(companyId),
-  ]);
+  const collections = await getCollections(companyId);
 
   return (
-    <Gallery
-      initialSites={sites}
-      initialCategories={categories}
+    <EmbedManager
       initialCollections={collections}
-      currentCollectionId={null}
-      currentCollectionName="All Sites"
       isAdmin={isAdmin}
       companyId={companyId}
     />

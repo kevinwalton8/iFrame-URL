@@ -24,6 +24,7 @@ export type Category = {
 export type Collection = {
   id: string;        // url-safe slug
   name: string;     // human-readable name
+  url?: string;     // the URL to embed at /c/[id]
   createdAt: string;
 };
 

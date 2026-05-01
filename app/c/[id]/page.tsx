@@ -1,13 +1,12 @@
 import { headers } from "next/headers";
-import { hasAccess, authorizedUserOn, validateToken } from "@whop-apps/sdk";
-import { getSites, getCategories, getCollections } from "@/lib/db";
-import Gallery from "@/components/Gallery";
+import { validateToken } from "@whop-apps/sdk";
+import { getCollections } from "@/lib/db";
 
 type PageProps = {
   params: Promise<{ id: string }>;
 };
 
-export default async function CollectionPage({ params }: PageProps) {
+export default async function EmbedPage({ params }: PageProps) {
   const { id } = await params;
   const hdrs = await headers();
 
@@ -23,37 +22,35 @@ export default async function CollectionPage({ params }: PageProps) {
     // use env fallback
   }
 
-  let isAdmin = process.env.DEV_ADMIN === "true";
-  if (!isAdmin && companyId) {
-    try {
-      isAdmin = await hasAccess({ to: authorizedUserOn(companyId), headers: hdrs });
-    } catch {
-      isAdmin = false;
-    }
+  const collections = await getCollections(companyId);
+  const embed = collections.find((c) => c.id === id);
+
+  if (!embed) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center gap-2">
+        <p className="text-sm text-white/50">Embed not found</p>
+        <a href="/" className="text-xs text-white/30 hover:text-white/60 transition-colors">← Back</a>
+      </div>
+    );
   }
 
-  const [allSites, categories, collections] = await Promise.all([
-    getSites(companyId),
-    getCategories(companyId),
-    getCollections(companyId),
-  ]);
-
-  const collection = collections.find((c) => c.id === id);
-  const exists = !!collection;
-  const filteredSites = exists
-    ? allSites.filter((s) => s.collections?.includes(id))
-    : [];
+  if (!embed.url) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center gap-2">
+        <p className="text-sm text-white/50">No URL configured for &ldquo;{embed.name}&rdquo;</p>
+        <a href="/" className="text-xs text-white/30 hover:text-white/60 transition-colors">← Back</a>
+      </div>
+    );
+  }
 
   return (
-    <Gallery
-      initialSites={filteredSites}
-      initialCategories={categories}
-      initialCollections={collections}
-      currentCollectionId={id}
-      currentCollectionName={collection?.name ?? "Collection not found"}
-      isAdmin={isAdmin}
-      companyId={companyId}
-      notFound={!exists}
-    />
+    <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh" }}>
+      <iframe
+        src={embed.url}
+        style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+        allowFullScreen
+        allow="fullscreen; clipboard-read; clipboard-write"
+      />
+    </div>
   );
 }

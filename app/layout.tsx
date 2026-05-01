@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "URL Gallery",
-  description: "A curated gallery of inspiring websites",
+  title: "iFrame URL",
+  description: "Embed any URL as a full-screen iframe",
 };
 
 export default function RootLayout({

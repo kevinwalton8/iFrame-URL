@@ -1,377 +1,47 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
-import type { Site, Category, Collection } from "@/lib/db";
-import SiteCard from "./SiteCard";
-import AddSiteModal from "./AddSiteModal";
-import QuickAddModal from "./QuickAddModal";
-import ManageCategoriesModal from "./ManageCategoriesModal";
-import CollectionsManagerModal from "./CollectionsManagerModal";
-import GridPicker from "./GridPicker";
-import BulkActionBar from "./BulkActionBar";
-import SortMenu from "./SortMenu";
-import { sortSites, isValidSortMode, type SortMode } from "@/lib/site-utils";
+import type { Collection } from "@/lib/db";
 
 type Props = {
-  initialSites: Site[];
-  initialCategories: Category[];
   initialCollections: Collection[];
-  /** null = master view (all sites). A collection id = filtered view. */
-  currentCollectionId: string | null;
-  currentCollectionName: string;
   isAdmin: boolean;
   companyId: string;
-  notFound?: boolean;
 };
 
-export default function Gallery({
-  initialSites,
-  initialCategories,
-  initialCollections,
-  currentCollectionId,
-  currentCollectionName,
-  isAdmin,
-  companyId,
-  notFound = false,
-}: Props) {
-  const [sites, setSites] = useState<Site[]>(initialSites);
-  const [categories, setCategories] = useState<Category[]>(initialCategories);
+export default function EmbedManager({ initialCollections, isAdmin, companyId }: Props) {
   const [collections, setCollections] = useState<Collection[]>(initialCollections);
-  const [editMode, setEditMode] = useState(false);
-  const [viewMode, setViewMode] = useState<"all" | "category">("category");
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
-  const [gridCols, setGridCols] = useState<number>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("gallery-grid-cols");
-      if (saved) return Number(saved);
-    }
-    return 6;
-  });
-
-  function handleGridChange(cols: number) {
-    setGridCols(cols);
-    if (typeof window !== "undefined") localStorage.setItem("gallery-grid-cols", String(cols));
-  }
-
-  const [sortMode, setSortMode] = useState<SortMode>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("gallery-sort-mode");
-      if (isValidSortMode(saved)) return saved;
-    }
-    return "newest";
-  });
-
-  function handleSortChange(mode: SortMode) {
-    setSortMode(mode);
-    if (typeof window !== "undefined") localStorage.setItem("gallery-sort-mode", mode);
-  }
-
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [editingSite, setEditingSite] = useState<Site | null>(null);
-  const [showManageCategories, setShowManageCategories] = useState(false);
-  const [showCollections, setShowCollections] = useState(false);
 
-  // Multi-select state
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  // Category pill order (persisted to localStorage)
-  const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const s = localStorage.getItem("gallery-category-order");
-        if (s) return JSON.parse(s);
-      } catch {}
-    }
-    return initialCategories.map((c) => c.name);
-  });
-
-  // Collection nav order (persisted to localStorage)
+  // Drag-to-reorder pill order
   const [collectionOrder, setCollectionOrder] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       try {
-        const s = localStorage.getItem("gallery-collection-order");
+        const s = localStorage.getItem("iframe-collection-order");
         if (s) return JSON.parse(s);
       } catch {}
     }
     return initialCollections.map((c) => c.id);
   });
 
-  // Drag refs — use refs to avoid thrashing state during drag
-  const dragCatIdx = useRef<number | null>(null);
-  const [dragCatOver, setDragCatOver] = useState<number | null>(null);
   const dragColIdx = useRef<number | null>(null);
   const [dragColOver, setDragColOver] = useState<number | null>(null);
 
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  function selectAll() {
-    setSelectedIds(new Set(filteredSites.map((s) => s.id)));
-  }
-
-  function clearSelection() {
-    setSelectedIds(new Set());
-  }
-
-  function handleSetEditMode(val: boolean) {
-    setEditMode(val);
-    if (!val) clearSelection();
-  }
-
-  function apiHeaders(): Record<string, string> {
-    return {
-      "Content-Type": "application/json",
-      "x-company-id": companyId,
-    };
-  }
-
-  // Pre-selected collection IDs when admin opens the Add/Quick-Add modals
-  // while viewing a specific collection page.
-  const defaultCollectionIds = useMemo(
-    () => (currentCollectionId ? [currentCollectionId] : []),
-    [currentCollectionId]
-  );
-
-  const searchedSites = useMemo(() => {
-    if (!searchQuery.trim()) return sites;
-    const q = searchQuery.toLowerCase();
-    return sites.filter(
-      (s) =>
-        s.title.toLowerCase().includes(q) ||
-        s.description?.toLowerCase().includes(q) ||
-        s.tags.some((t) => t.toLowerCase().includes(q)) ||
-        s.category.toLowerCase().includes(q)
-    );
-  }, [sites, searchQuery]);
-
-  // Apply sort (and the "NEW only" filter, which is part of sortSites)
-  const filteredSites = useMemo(
-    () => sortSites(searchedSites, sortMode),
-    [searchedSites, sortMode]
-  );
-
-  const sitesByCategory = useMemo(() => {
-    const map = new Map<string, Site[]>();
-    filteredSites.forEach((site) => {
-      const cat = site.category || "Uncategorized";
-      if (!map.has(cat)) map.set(cat, []);
-      map.get(cat)!.push(site);
-    });
-    return map;
-  }, [filteredSites]);
-
-  const activeCategoryNames = useMemo(() => Array.from(sitesByCategory.keys()), [sitesByCategory]);
-
-  // Category names sorted by user-defined drag order; new/unknown categories appended at end
-  const orderedCategoryNames = useMemo(() => {
-    const extra = activeCategoryNames.filter((n) => !categoryOrder.includes(n));
-    return [...categoryOrder, ...extra].filter((n) => activeCategoryNames.includes(n));
-  }, [categoryOrder, activeCategoryNames]);
-
-  // Collections sorted by user-defined drag order; new collections appended at end
   const orderedCollections = useMemo(() => {
     const extra = collections.filter((c) => !collectionOrder.includes(c.id)).map((c) => c.id);
     const order = [...collectionOrder, ...extra];
-    return order.map((id) => collections.find((c) => c.id === id)).filter(Boolean) as typeof collections;
+    return order.map((id) => collections.find((c) => c.id === id)).filter(Boolean) as Collection[];
   }, [collectionOrder, collections]);
 
-  const categoryEntries = useMemo(() => {
-    if (selectedCategory) {
-      const s = sitesByCategory.get(selectedCategory);
-      return s ? [[selectedCategory, s] as [string, Site[]]] : [];
-    }
-    return orderedCategoryNames
-      .map((name) => [name, sitesByCategory.get(name)!] as [string, Site[]])
-      .filter(([, s]) => s != null);
-  }, [sitesByCategory, selectedCategory, orderedCategoryNames]);
-
-  // ─── Site CRUD ────────────────────────────────────────────────────────────
-  /**
-   * After an add/update, decide whether the site still belongs in the current
-   * filtered view. If we're on /c/<id> and the site no longer has that
-   * collection tagged, drop it from local state.
-   */
-  function siteBelongsHere(site: Site): boolean {
-    if (currentCollectionId === null) return true;
-    return !!site.collections?.includes(currentCollectionId);
+  function apiHeaders(): Record<string, string> {
+    return { "Content-Type": "application/json", "x-company-id": companyId };
   }
 
-  async function handleAddSite(data: Omit<Site, "id" | "createdAt">) {
-    const res = await fetch("/api/sites", {
-      method: "POST",
-      headers: apiHeaders(),
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) return;
-    const newSite: Site = await res.json();
-    if (siteBelongsHere(newSite)) {
-      setSites((prev) => [...prev, newSite]);
-    }
-    setShowAddModal(false);
-  }
-
-  async function handleUpdateSite(id: string, data: Omit<Site, "id" | "createdAt">) {
-    const res = await fetch("/api/sites", {
-      method: "PUT",
-      headers: apiHeaders(),
-      body: JSON.stringify({ id, ...data }),
-    });
-    if (!res.ok) return;
-    const updated: Site = await res.json();
-    if (siteBelongsHere(updated)) {
-      setSites((prev) => prev.map((s) => (s.id === id ? updated : s)));
-    } else {
-      // The user removed this collection from the site — drop it from this view
-      setSites((prev) => prev.filter((s) => s.id !== id));
-    }
-    setEditingSite(null);
-  }
-
-  async function handleDeleteSite(id: string) {
-    const res = await fetch("/api/sites", {
-      method: "DELETE",
-      headers: apiHeaders(),
-      body: JSON.stringify({ id }),
-    });
-    if (!res.ok) return;
-    setSites((prev) => prev.filter((s) => s.id !== id));
-  }
-
-  async function handleAddCategory(name: string) {
-    const res = await fetch("/api/categories", {
-      method: "POST",
-      headers: apiHeaders(),
-      body: JSON.stringify({ name }),
-    });
-    if (!res.ok) return;
-    const newCat: Category = await res.json();
-    setCategories((prev) => [...prev, newCat]);
-  }
-
-  async function handleRenameCategory(id: string, name: string) {
-    const res = await fetch("/api/categories", {
-      method: "PUT",
-      headers: apiHeaders(),
-      body: JSON.stringify({ id, name }),
-    });
-    if (!res.ok) return;
-    setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
-    setSites((prev) =>
-      prev.map((s) => {
-        const oldCat = categories.find((c) => c.id === id);
-        return oldCat && s.category === oldCat.name ? { ...s, category: name } : s;
-      })
-    );
-  }
-
-  async function handleDeleteCategory(id: string) {
-    const res = await fetch("/api/categories", {
-      method: "DELETE",
-      headers: apiHeaders(),
-      body: JSON.stringify({ id }),
-    });
-    if (!res.ok) return;
-    setCategories((prev) => prev.filter((c) => c.id !== id));
-  }
-
-  async function handleBulkDelete() {
-    if (!selectedIds.size) return;
-    if (!confirm(`Delete ${selectedIds.size} site${selectedIds.size > 1 ? "s" : ""}?`)) return;
-    for (const id of selectedIds) {
-      await fetch("/api/sites", {
-        method: "DELETE",
-        headers: apiHeaders(),
-        body: JSON.stringify({ id }),
-      });
-    }
-    setSites((prev) => prev.filter((s) => !selectedIds.has(s.id)));
-    clearSelection();
-  }
-
-  async function handleBulkAssignCategory(categoryName: string) {
-    const ids = Array.from(selectedIds);
-    await Promise.all(
-      ids.map((id) =>
-        fetch("/api/sites", {
-          method: "PUT",
-          headers: apiHeaders(),
-          body: JSON.stringify({ id, category: categoryName }),
-        })
-      )
-    );
-    setSites((prev) =>
-      prev.map((s) => (selectedIds.has(s.id) ? { ...s, category: categoryName } : s))
-    );
-    clearSelection();
-  }
-
-  async function handleBulkAddTag(tag: string) {
-    const updates = sites.filter((s) => selectedIds.has(s.id)).map((s) => ({
-      id: s.id,
-      tags: s.tags.includes(tag) ? s.tags : [...s.tags, tag],
-    }));
-    await Promise.all(
-      updates.map(({ id, tags }) =>
-        fetch("/api/sites", {
-          method: "PUT",
-          headers: apiHeaders(),
-          body: JSON.stringify({ id, tags }),
-        })
-      )
-    );
-    setSites((prev) =>
-      prev.map((s) => {
-        const u = updates.find((u) => u.id === s.id);
-        return u ? { ...s, tags: u.tags } : s;
-      })
-    );
-    clearSelection();
-  }
-
-  /** Add or remove a collection tag on every selected site. */
-  async function handleBulkToggleCollection(collectionId: string, add: boolean) {
-    const ids = Array.from(selectedIds);
-    const updates = sites
-      .filter((s) => selectedIds.has(s.id))
-      .map((s) => {
-        const current = new Set(s.collections ?? []);
-        if (add) current.add(collectionId);
-        else current.delete(collectionId);
-        return { id: s.id, collections: Array.from(current) };
-      });
-    await Promise.all(
-      updates.map(({ id, collections: c }) =>
-        fetch("/api/sites", {
-          method: "PUT",
-          headers: apiHeaders(),
-          body: JSON.stringify({ id, collections: c }),
-        })
-      )
-    );
-    // Update local state, removing rows that no longer belong here
-    setSites((prev) => {
-      const byId = new Map(updates.map((u) => [u.id, u.collections]));
-      return prev
-        .map((s) => (byId.has(s.id) ? { ...s, collections: byId.get(s.id)! } : s))
-        .filter((s) => (currentCollectionId === null ? true : s.collections?.includes(currentCollectionId)));
-    });
-    clearSelection();
-  }
-
-  // ─── Collections CRUD ─────────────────────────────────────────────────────
-  async function handleCreateCollection(name: string): Promise<Collection | null> {
+  async function handleCreate(name: string, url: string): Promise<Collection | null> {
     const res = await fetch("/api/collections", {
       method: "POST",
       headers: apiHeaders(),
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, url }),
     });
     if (!res.ok) return null;
     const created: Collection = await res.json();
@@ -379,18 +49,17 @@ export default function Gallery({
     return created;
   }
 
-  async function handleRenameCollection(id: string, name: string) {
+  async function handleRename(id: string, name: string) {
     const res = await fetch("/api/collections", {
       method: "PUT",
       headers: apiHeaders(),
       body: JSON.stringify({ id, name }),
     });
     if (!res.ok) return;
-    const updated: Collection = await res.json();
-    setCollections((prev) => prev.map((c) => (c.id === id ? updated : c)));
+    setCollections((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
   }
 
-  async function handleDeleteCollection(id: string) {
+  async function handleDelete(id: string) {
     const res = await fetch("/api/collections", {
       method: "DELETE",
       headers: apiHeaders(),
@@ -398,60 +67,9 @@ export default function Gallery({
     });
     if (!res.ok) return;
     setCollections((prev) => prev.filter((c) => c.id !== id));
-    if (id === currentCollectionId) {
-      window.location.href = "/";
-    } else {
-      // Strip the deleted id from local state so chips disappear
-      setSites((prev) =>
-        prev.map((s) =>
-          s.collections?.includes(id)
-            ? { ...s, collections: s.collections.filter((c) => c !== id) }
-            : s
-        )
-      );
-    }
+    setCollectionOrder((prev) => prev.filter((oid) => oid !== id));
   }
 
-  // ─── Order persistence ────────────────────────────────────────────────────
-  function saveCategoryOrder(order: string[]) {
-    setCategoryOrder(order);
-    if (typeof window !== "undefined")
-      localStorage.setItem("gallery-category-order", JSON.stringify(order));
-  }
-
-  function saveCollectionOrder(order: string[]) {
-    setCollectionOrder(order);
-    if (typeof window !== "undefined")
-      localStorage.setItem("gallery-collection-order", JSON.stringify(order));
-  }
-
-  // ─── Drag handlers: category pills ────────────────────────────────────────
-  function handleCatDragStart(e: React.DragEvent, idx: number) {
-    dragCatIdx.current = idx;
-    e.dataTransfer.effectAllowed = "move";
-  }
-  function handleCatDragOver(e: React.DragEvent, idx: number) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragCatOver(idx);
-  }
-  function handleCatDrop(e: React.DragEvent, toIdx: number) {
-    e.preventDefault();
-    const fromIdx = dragCatIdx.current;
-    dragCatIdx.current = null;
-    setDragCatOver(null);
-    if (fromIdx === null || fromIdx === toIdx) return;
-    const next = [...orderedCategoryNames];
-    const [moved] = next.splice(fromIdx, 1);
-    next.splice(toIdx, 0, moved);
-    saveCategoryOrder(next);
-  }
-  function handleCatDragEnd() {
-    dragCatIdx.current = null;
-    setDragCatOver(null);
-  }
-
-  // ─── Drag handlers: collection nav ────────────────────────────────────────
   function handleColDragStart(e: React.DragEvent, idx: number) {
     dragColIdx.current = idx;
     e.dataTransfer.effectAllowed = "move";
@@ -470,182 +88,55 @@ export default function Gallery({
     const next = orderedCollections.map((c) => c.id);
     const [moved] = next.splice(fromIdx, 1);
     next.splice(toIdx, 0, moved);
-    saveCollectionOrder(next);
+    setCollectionOrder(next);
+    if (typeof window !== "undefined")
+      localStorage.setItem("iframe-collection-order", JSON.stringify(next));
   }
   function handleColDragEnd() {
     dragColIdx.current = null;
     setDragColOver(null);
   }
 
-  // ─── Layout ───────────────────────────────────────────────────────────────
-  const gridClass = `grid grid-cols-2 sm:grid-cols-3 ${{
-    3: "lg:grid-cols-3",
-    4: "lg:grid-cols-4",
-    5: "lg:grid-cols-5",
-    6: "lg:grid-cols-6",
-    7: "lg:grid-cols-7",
-    8: "lg:grid-cols-8",
-  }[gridCols] ?? "lg:grid-cols-4"} gap-4`;
-
-  // Not-found state for /c/[id] when the collection doesn't exist
-  if (notFound) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center px-5 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-3xl mb-4">
-          🤷
-        </div>
-        <h1 className="text-lg font-semibold mb-1">Collection not found</h1>
-        <p className="text-sm text-white/50 max-w-sm">
-          This collection doesn&apos;t exist (or has been deleted).
-          {isAdmin && " Open the master view and create one from Settings → Collections."}
-        </p>
-        <a
-          href="/"
-          className="mt-6 px-4 py-2 bg-white text-black rounded-xl text-sm font-medium hover:bg-white/90 transition-colors"
-        >
-          Go to All Sites
-        </a>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
+    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-5 pb-3">
-        <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center justify-between px-5 pt-5 pb-4">
+        <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-md bg-white/10 flex items-center justify-center text-xs flex-shrink-0">
-            🔗
+            <IframeIcon />
           </div>
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-white truncate">{currentCollectionName}</div>
-            <div className="text-[11px] text-white/40">
-              {sites.length} {sites.length === 1 ? "site" : "sites"}
-              {currentCollectionId === null && collections.length > 0 && (
-                <> · {collections.length} {collections.length === 1 ? "collection" : "collections"}</>
-              )}
-            </div>
-          </div>
+          <span className="text-sm font-semibold text-white">iFrame URL</span>
         </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSearch((v) => !v)}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
-            aria-label="Search"
-          >
-            <SearchIcon />
-          </button>
-
-          <SortMenu value={sortMode} onChange={handleSortChange} />
-
-          <button
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
-            aria-label="Filter"
-          >
-            <FilterIcon />
-          </button>
-
-          <div className="hidden sm:block">
-            <GridPicker value={gridCols} onChange={handleGridChange} />
-          </div>
-
-          {isAdmin && (
-            <button
-              onClick={() => handleSetEditMode(!editMode)}
-              className={`flex items-center gap-1.5 px-3 h-8 rounded-full text-sm font-medium transition-colors ${
-                editMode
-                  ? "bg-white text-black"
-                  : "bg-white/10 text-white hover:bg-white/20"
-              }`}
-            >
-              <SettingsIcon />
-              <span className="hidden sm:inline">Settings</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {showSearch && (
-        <div className="px-5 pb-3">
-          <input
-            type="text"
-            placeholder="Search sites..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white/10 border border-white/10 rounded-xl px-4 py-2 text-sm placeholder:text-white/40 focus:outline-none focus:border-white/30"
-            autoFocus
-          />
-        </div>
-      )}
-
-      {editMode && isAdmin && (
-        <div className="flex items-center gap-2 px-5 pb-4 overflow-x-auto scrollbar-none">
-          <button
-            onClick={() => setShowQuickAdd(true)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white text-black rounded-xl text-xs font-semibold hover:bg-white/90 transition-colors"
-          >
-            <BoltIcon />
-            Quick Add
-          </button>
+        {isAdmin && (
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white/10 text-white rounded-xl text-xs font-medium hover:bg-white/20 transition-colors"
+            className="flex items-center gap-1.5 px-4 h-8 bg-white text-black rounded-full text-sm font-semibold hover:bg-white/90 transition-colors"
           >
-            <span className="text-sm leading-none font-medium">+</span>
-            Add
+            <span className="text-base leading-none">+</span>
+            Add New URL
           </button>
-          <button
-            onClick={() => setShowManageCategories(true)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white/10 text-white rounded-xl text-xs font-medium hover:bg-white/20 transition-colors"
-          >
-            <FolderIcon />
-            Categories
-          </button>
-          <button
-            onClick={() => setShowCollections(true)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white/10 text-white rounded-xl text-xs font-medium hover:bg-white/20 transition-colors"
-          >
-            <CollectionsIcon />
-            Collections
-            {collections.length > 0 && (
-              <span className="ml-0.5 text-[10px] bg-white/15 px-1.5 py-0.5 rounded-full">
-                {collections.length}
-              </span>
-            )}
-          </button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Quick collection nav (admin only) — shows when there are collections, lets you jump between filtered views */}
-      {isAdmin && collections.length > 0 && (
-        <div className="flex items-center gap-1.5 px-5 pb-3 overflow-x-auto scrollbar-none">
-          <a
-            href="/"
-            className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${
-              currentCollectionId === null
-                ? "bg-white text-black border-white"
-                : "bg-white/[0.04] text-white/60 border-white/10 hover:text-white hover:bg-white/10"
-            }`}
-          >
-            All Sites
-          </a>
+      {/* Embed pills */}
+      {orderedCollections.length > 0 && (
+        <div className="flex items-center gap-1.5 px-5 pb-4 flex-wrap">
           {orderedCollections.map((c, idx) => (
             <a
               key={c.id}
               href={`/c/${c.id}`}
-              draggable
-              onDragStart={(e) => handleColDragStart(e, idx)}
-              onDragOver={(e) => handleColDragOver(e, idx)}
-              onDrop={(e) => handleColDrop(e, idx)}
-              onDragEnd={handleColDragEnd}
-              className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all whitespace-nowrap cursor-grab active:cursor-grabbing select-none ${
-                currentCollectionId === c.id
-                  ? "bg-white text-black border-white"
-                  : "bg-white/[0.04] text-white/60 border-white/10 hover:text-white hover:bg-white/10"
-              } ${dragColOver === idx && dragColIdx.current !== idx ? "border-white/50 scale-105" : ""} ${
-                dragColIdx.current === idx ? "opacity-40" : ""
-              }`}
+              draggable={isAdmin}
+              onDragStart={isAdmin ? (e) => handleColDragStart(e, idx) : undefined}
+              onDragOver={isAdmin ? (e) => handleColDragOver(e, idx) : undefined}
+              onDrop={isAdmin ? (e) => handleColDrop(e, idx) : undefined}
+              onDragEnd={isAdmin ? handleColDragEnd : undefined}
+              className={[
+                "flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-all whitespace-nowrap",
+                "bg-white/[0.04] text-white/70 border-white/10 hover:text-white hover:bg-white/10",
+                isAdmin ? "cursor-grab active:cursor-grabbing select-none" : "",
+                dragColOver === idx && dragColIdx.current !== idx ? "border-white/50 scale-105" : "",
+                dragColIdx.current === idx ? "opacity-40" : "",
+              ].join(" ")}
             >
               {c.name}
             </a>
@@ -653,282 +144,300 @@ export default function Gallery({
         </div>
       )}
 
-      {/* View tabs + inline category filter pills */}
-      <div className="flex items-center gap-1.5 px-5 pb-4 overflow-x-auto scrollbar-none">
-        <button
-          onClick={() => { setViewMode("all"); setSelectedCategory(null); }}
-          className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            viewMode === "all" ? "bg-white text-black" : "text-white/60 hover:text-white"
-          }`}
-        >
-          All
-        </button>
-
-        <button
-          onClick={() => { setViewMode("category"); setSelectedCategory(null); }}
-          className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            viewMode === "category" ? "bg-white text-black" : "text-white/60 hover:text-white"
-          }`}
-        >
-          By Category
-        </button>
-
-        {viewMode === "category" && orderedCategoryNames.length > 0 && (
-          <>
-            <div className="flex-shrink-0 w-px h-4 bg-white/15 mx-0.5" />
-            {orderedCategoryNames.map((name, idx) => (
+      {/* Centered main content */}
+      <div className="flex-1 flex items-center justify-center px-5 py-12">
+        {collections.length === 0 ? (
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
+              <IframeIcon size={28} />
+            </div>
+            <h1 className="text-lg font-semibold mb-2">No embeds yet</h1>
+            <p className="text-sm text-white/50 mb-6">
+              Paste any URL — Notion doc, website, or tool — and get a shareable iframe link for your community.
+            </p>
+            {isAdmin && (
               <button
-                key={name}
-                draggable
-                onDragStart={(e) => handleCatDragStart(e, idx)}
-                onDragOver={(e) => handleCatDragOver(e, idx)}
-                onDrop={(e) => handleCatDrop(e, idx)}
-                onDragEnd={handleCatDragEnd}
-                onClick={() => setSelectedCategory((prev) => (prev === name ? null : name))}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap cursor-grab active:cursor-grabbing select-none ${
-                  selectedCategory === name
-                    ? "bg-white/20 text-white ring-1 ring-white/30"
-                    : "text-white/50 hover:text-white hover:bg-white/10"
-                } ${dragCatOver === idx && dragCatIdx.current !== idx ? "ring-1 ring-white/50 scale-105" : ""} ${
-                  dragCatIdx.current === idx ? "opacity-40" : ""
-                }`}
+                onClick={() => setShowAddModal(true)}
+                className="px-5 py-2.5 bg-white text-black rounded-xl text-sm font-semibold hover:bg-white/90 transition-colors"
               >
-                {name}
+                + Add New URL
               </button>
-            ))}
+            )}
+          </div>
+        ) : (
+          <div className="text-center">
+            {isAdmin && (
+              <p className="text-white/25 text-xs">
+                Click a pill to open the iframe · Drag to reorder
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Add modal */}
+      {showAddModal && isAdmin && (
+        <AddEmbedModal
+          onCreate={handleCreate}
+          onClose={() => setShowAddModal(false)}
+          onRename={handleRename}
+          onDelete={handleDelete}
+          collections={orderedCollections}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddEmbedModal({
+  onCreate,
+  onClose,
+  onRename,
+  onDelete,
+  collections,
+}: {
+  onCreate: (name: string, url: string) => Promise<Collection | null>;
+  onClose: () => void;
+  onRename: (id: string, name: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  collections: Collection[];
+}) {
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [created, setCreated] = useState<Collection | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+
+  const origin = useMemo(
+    () => (typeof window !== "undefined" ? window.location.origin : ""),
+    []
+  );
+
+  async function handleSave() {
+    if (!name.trim() || !url.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await onCreate(name.trim(), url.trim());
+      if (!result) {
+        setError("Failed to create embed. Try again.");
+        return;
+      }
+      setCreated(result);
+    } catch {
+      setError("Failed to create embed. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCopy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      window.prompt("Copy this URL:", text);
+    }
+  }
+
+  async function handleRenameSubmit(id: string) {
+    const trimmed = editName.trim();
+    if (!trimmed) { setEditingId(null); return; }
+    await onRename(id, trimmed);
+    setEditingId(null);
+  }
+
+  const shareUrl = created ? `${origin}/c/${created.id}` : "";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md bg-[#0f0f0f] border border-white/10 rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {created ? (
+          /* Success state */
+          <div className="p-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-green-400">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <h2 className="text-base font-semibold text-white mb-1">Your embed is ready!</h2>
+            <p className="text-sm text-white/50 mb-5">
+              Share this link wherever you want the iframe to appear.
+            </p>
+            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 mb-4">
+              <code className="flex-1 text-xs text-white/70 truncate text-left">{shareUrl}</code>
+              <button
+                onClick={() => handleCopy(shareUrl)}
+                className="flex-shrink-0 px-3 py-1.5 bg-white text-black rounded-lg text-xs font-semibold hover:bg-white/90 transition-colors"
+              >
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-full py-2.5 bg-white/10 text-white rounded-xl text-sm font-medium hover:bg-white/20 transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 flex-shrink-0">
+              <div>
+                <h2 className="text-base font-semibold text-white">Add New URL</h2>
+                <p className="text-xs text-white/40 mt-0.5">Creates a shareable iframe embed link</p>
+              </div>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Form */}
+            <div className="p-5 space-y-4 border-b border-white/10 flex-shrink-0">
+              <div>
+                <label className="text-xs font-medium text-white/60 mb-1.5 block">Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Notion Doc, Course Materials"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+                  autoFocus
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-white/60 mb-1.5 block">URL to embed</label>
+                <input
+                  type="url"
+                  placeholder="https://notion.so/your-page"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30 transition-colors"
+                />
+              </div>
+              {error && <p className="text-xs text-red-400">{error}</p>}
+              <button
+                onClick={handleSave}
+                disabled={!name.trim() || !url.trim() || saving}
+                className="w-full py-2.5 bg-white text-black rounded-xl text-sm font-semibold disabled:opacity-40 hover:bg-white/90 transition-colors"
+              >
+                {saving ? "Saving…" : "Save & Get Link"}
+              </button>
+            </div>
+
+            {/* Existing embeds list */}
+            {collections.length > 0 && (
+              <div className="flex-1 overflow-y-auto">
+                <p className="text-[11px] font-medium text-white/40 px-5 pt-4 pb-2 uppercase tracking-wide">
+                  Existing embeds
+                </p>
+                {collections.map((c) => {
+                  const embedUrl = `${origin}/c/${c.id}`;
+                  const isEditing = editingId === c.id;
+                  return (
+                    <div key={c.id} className="px-5 py-3 border-b border-white/5">
+                      {isEditing ? (
+                        <div className="flex items-center gap-2 mb-2">
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleRenameSubmit(c.id);
+                              if (e.key === "Escape") setEditingId(null);
+                            }}
+                            autoFocus
+                            className="flex-1 bg-white/5 border border-white/20 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-white/40"
+                          />
+                          <button onClick={() => handleRenameSubmit(c.id)} className="text-xs text-white/80 hover:text-white px-2">Save</button>
+                          <button onClick={() => setEditingId(null)} className="text-xs text-white/40 hover:text-white px-2">Cancel</button>
+                        </div>
+                      ) : (
+                        <p className="text-sm font-medium text-white mb-2">{c.name}</p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 min-w-0 truncate text-xs text-white/40 bg-white/[0.03] px-2 py-1.5 rounded">
+                          {embedUrl}
+                        </code>
+                        <CopyButton url={embedUrl} />
+                      </div>
+                      {!isEditing && (
+                        <div className="flex items-center gap-3 mt-2">
+                          <button
+                            onClick={() => { setEditingId(c.id); setEditName(c.name); }}
+                            className="text-xs text-white/40 hover:text-white/70 transition-colors"
+                          >
+                            Rename
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete "${c.name}"?`)) onDelete(c.id);
+                            }}
+                            className="text-xs text-red-400/70 hover:text-red-400 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </div>
-
-      {/* Main grid */}
-      <div className="px-5 pb-8">
-        {viewMode === "all" ? (
-          filteredSites.length === 0 ? (
-            <EmptyState
-              isAdmin={isAdmin}
-              editMode={editMode}
-              onAdd={() => setShowAddModal(true)}
-              currentCollectionName={currentCollectionId ? currentCollectionName : null}
-            />
-          ) : (
-            <div className={gridClass}>
-              {filteredSites.map((site) => (
-                <SiteCard
-                  key={site.id}
-                  site={site}
-                  editMode={editMode && isAdmin}
-                  selected={selectedIds.has(site.id)}
-                  onSelect={toggleSelect}
-                  onDelete={handleDeleteSite}
-                  onEdit={setEditingSite}
-                />
-              ))}
-            </div>
-          )
-        ) : (
-          categoryEntries.length === 0 ? (
-            <EmptyState
-              isAdmin={isAdmin}
-              editMode={editMode}
-              onAdd={() => setShowAddModal(true)}
-              currentCollectionName={currentCollectionId ? currentCollectionName : null}
-            />
-          ) : (
-            categoryEntries.map(([cat, catSites]) => (
-              <div key={cat} className="mb-8">
-                <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-sm font-semibold text-white">{cat}</h2>
-                  <span className="text-xs text-white/40">{catSites.length}</span>
-                </div>
-                <div className={gridClass}>
-                  {catSites.map((site) => (
-                    <SiteCard
-                      key={site.id}
-                      site={site}
-                      editMode={editMode && isAdmin}
-                      selected={selectedIds.has(site.id)}
-                      onSelect={toggleSelect}
-                      onDelete={handleDeleteSite}
-                      onEdit={setEditingSite}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))
-          )
-        )}
-      </div>
-
-      {/* Bulk action bar */}
-      {editMode && isAdmin && selectedIds.size > 0 && (
-        <BulkActionBar
-          count={selectedIds.size}
-          total={filteredSites.length}
-          categories={categories}
-          collections={collections}
-          onSelectAll={selectAll}
-          onClear={clearSelection}
-          onDelete={handleBulkDelete}
-          onAssignCategory={handleBulkAssignCategory}
-          onAddTag={handleBulkAddTag}
-          onToggleCollection={handleBulkToggleCollection}
-        />
-      )}
-
-      {/* Modals */}
-      {showQuickAdd && (
-        <QuickAddModal
-          categories={categories}
-          collections={collections}
-          defaultCollectionIds={defaultCollectionIds}
-          companyId={companyId}
-          defaultCategory={
-            viewMode === "category" && selectedCategory ? selectedCategory : undefined
-          }
-          onAdd={async (data) => {
-            const res = await fetch("/api/sites", {
-              method: "POST",
-              headers: apiHeaders(),
-              body: JSON.stringify(data),
-            });
-            if (!res.ok) throw new Error("Failed to save");
-            const newSite: Site = await res.json();
-            if (siteBelongsHere(newSite)) {
-              setSites((prev) => [...prev, newSite]);
-            }
-            setShowQuickAdd(false);
-          }}
-          onClose={() => setShowQuickAdd(false)}
-          onCreateCategory={handleAddCategory}
-        />
-      )}
-
-      {showAddModal && (
-        <AddSiteModal
-          categories={categories}
-          collections={collections}
-          defaultCollectionIds={defaultCollectionIds}
-          onAdd={handleAddSite}
-          onClose={() => setShowAddModal(false)}
-          onCreateCategory={handleAddCategory}
-        />
-      )}
-
-      {editingSite && (
-        <AddSiteModal
-          categories={categories}
-          collections={collections}
-          initialSite={editingSite}
-          onUpdate={handleUpdateSite}
-          onClose={() => setEditingSite(null)}
-          onCreateCategory={handleAddCategory}
-        />
-      )}
-
-      {showManageCategories && (
-        <ManageCategoriesModal
-          categories={categories}
-          onAdd={handleAddCategory}
-          onRename={handleRenameCategory}
-          onDelete={handleDeleteCategory}
-          onClose={() => setShowManageCategories(false)}
-        />
-      )}
-
-      {showCollections && (
-        <CollectionsManagerModal
-          collections={collections}
-          currentCollectionId={currentCollectionId}
-          onCreate={handleCreateCollection}
-          onRename={handleRenameCollection}
-          onDelete={handleDeleteCollection}
-          onClose={() => setShowCollections(false)}
-        />
-      )}
     </div>
   );
 }
 
-function EmptyState({
-  isAdmin,
-  editMode,
-  onAdd,
-  currentCollectionName,
-}: {
-  isAdmin: boolean;
-  editMode: boolean;
-  onAdd: () => void;
-  currentCollectionName: string | null;
-}) {
+function CopyButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      window.prompt("Copy this URL:", url);
+    }
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center py-24 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-3xl mb-4">
-        🔗
-      </div>
-      <p className="text-white/50 text-sm">
-        {currentCollectionName
-          ? `No sites tagged with "${currentCollectionName}" yet.`
-          : "No sites yet."}
-      </p>
-      {isAdmin && !editMode && (
-        <p className="text-white/30 text-xs mt-1">Enable Settings to add sites.</p>
-      )}
-      {isAdmin && editMode && (
-        <button
-          onClick={onAdd}
-          className="mt-4 px-4 py-2 bg-white text-black rounded-xl text-sm font-medium hover:bg-white/90 transition-colors"
-        >
-          + Add Website
-        </button>
-      )}
-    </div>
+    <button
+      onClick={handleCopy}
+      className="flex-shrink-0 px-2.5 py-1.5 bg-white/10 text-white text-xs rounded hover:bg-white/20 transition-colors"
+    >
+      {copied ? "Copied!" : "Copy"}
+    </button>
   );
 }
 
-function SearchIcon() {
+function IframeIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  );
-}
-function FilterIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-    </svg>
-  );
-}
-function SettingsIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-function FolderIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-function BoltIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
-    </svg>
-  );
-}
-function CollectionsIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="3" y="3" width="7" height="7" rx="1" />
-      <rect x="14" y="3" width="7" height="7" rx="1" />
-      <rect x="3" y="14" width="7" height="7" rx="1" />
-      <rect x="14" y="14" width="7" height="7" rx="1" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="2" y="3" width="20" height="18" rx="2" />
+      <path d="M8 10l-3 3 3 3" />
+      <path d="M16 10l3 3-3 3" />
+      <path d="M12 8v8" />
     </svg>
   );
 }
